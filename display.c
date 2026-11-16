@@ -97,9 +97,7 @@ static const char *text_em(char *buf, size_t size,
 {
 	return sg_fmt_human(buf, size,
 						solar_mass * SUN_MASS_IN_EARTH_MASSES, decimals);
-}
-
-static void text_atmosphere_section(planet_pointer planet)
+}static void text_atmosphere_section(planet_pointer planet)
 {
 	printf("   Atmosphere:\n");
 
@@ -631,10 +629,11 @@ void create_svg_file (FILE				*file_arg,
 	planet_pointer	planet;
 	FILE*	file = stdout;
 	char	file_spec[300];
+	char	svg_label[32];
 	
 	if (file_arg == NULL)
 	{
-		sprintf (&file_spec[0], "%s%s%s", path, file_name, svg_ext);
+		snprintf (&file_spec[0], sizeof(file_spec), "%s%s%s", path, file_name, svg_ext);
 
 #ifdef macintosh
 		_fcreator ='MSIE';
@@ -645,6 +644,12 @@ void create_svg_file (FILE				*file_arg,
 		_fcreator ='R*ch';
 		_ftype = 'TEXT';
 #endif
+
+		if (file == NULL)
+		{
+			fprintf (stderr, "Could not open file %s\n", file_spec);
+			return;
+		}
 	}
 	else
 	{
@@ -805,12 +810,21 @@ void create_svg_file (FILE				*file_arg,
 						);
 	
 				fprintf (file,
-						 (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 1.0 
-						 ? "%.2Lf"
-						 : (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 10.0 
-						   ? "%.1Lf"
-						   : "%.0Lf",
-						 planet->mass * SUN_MASS_IN_EARTH_MASSES
+						 (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 1.0
+						 ? "%s"
+						 : (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 10.0
+						   ? "%s"
+						   : "%s",
+						 /* Zero-safe label rendering (BUG-01/02): a tiny
+						  * nonzero body must not display as "0.00". */
+						 (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 1.0
+						 ? sg_fmt_human(svg_label, sizeof(svg_label),
+										planet->mass * SUN_MASS_IN_EARTH_MASSES, 2)
+						 : (planet->mass * SUN_MASS_IN_EARTH_MASSES) <= 10.0
+						   ? sg_fmt_human(svg_label, sizeof(svg_label),
+										  planet->mass * SUN_MASS_IN_EARTH_MASSES, 1)
+						   : sg_fmt_human(svg_label, sizeof(svg_label),
+										  planet->mass * SUN_MASS_IN_EARTH_MASSES, 0)
 						);
 	
 				fprintf (file, "</text>\n\n");
@@ -823,7 +837,11 @@ void create_svg_file (FILE				*file_arg,
 		}
 		
 		fflush (file);
-		fclose (file);
+
+		/* Only close streams we opened (PLAN.MD §4: never close
+		 * caller-owned stdout). */
+		if (file_arg == NULL)
+			fclose (file);
 	}
 }
 
@@ -886,6 +904,11 @@ FILE *open_html_file (char *system_name,
 
 	if (NULL != file)
 	{
+		char	escaped_name[400];
+		const char *shown_name = noname ? "" : system_name;
+
+		sg_escape_html(escaped_name, sizeof(escaped_name), shown_name);
+
 		fprintf (file,
 		        "<!DOCTYPE HTML PUBLIC %c-//W3C//DTD HTML 4.01 Transitional//EN%c\n"
 		        "        %chttp://www.w3.org/TR/html4/loose.dtd%c>\n"
@@ -900,11 +923,11 @@ FILE *open_html_file (char *system_name,
 				"</style>\r"
 				"<link rel='icon' type='image/png' href='%sref/favicon.png'>\r"
 				"</head>\n<body bgcolor='" BGCOLOR "' text='" TXCOLOR "' "
-							   "link='" LINKCOLOR "' vlink='" TXCOLOR "' alink='" ALINKCOLOR "'>\n\n\n", 
+							   "link='" LINKCOLOR "' vlink='" TXCOLOR "' alink='" ALINKCOLOR "'>\n\n\n",
 				'"','"','"','"',
 				seed,
 				noname ? "" : " - ",
-				noname ? "" : system_name,
+				escaped_name,
 				prognam, stargen_revision,
 				url_path
 				);
@@ -1127,10 +1150,22 @@ void html_thumbnails(planet_pointer innermost_planet,
 			"\t<font size='+2' color='" TXTABLE "'>");
 
 	if (file_name[0] == '\0')
-		fprintf (file, "%s", system_name);
+	{
+		char	escaped_name[400];
+
+		sg_escape_html(escaped_name, sizeof(escaped_name), system_name);
+		fprintf (file, "%s", escaped_name);
+	}
 	else
-		fprintf (file, "<a href='%s'>%s</a>", 
-						system_url, system_name);
+	{
+		char	escaped_name[400];
+		char	escaped_url[800];
+
+		sg_escape_html(escaped_name, sizeof(escaped_name), system_name);
+		sg_escape_html(escaped_url, sizeof(escaped_url), system_url);
+		fprintf (file, "<a href='%s'>%s</a>",
+						escaped_url, escaped_name);
+	}
 
 	fprintf (file,
 		    	"</font></th></tr>\n"
@@ -1167,11 +1202,20 @@ void html_thumbnails(planet_pointer innermost_planet,
 		{
 			int	ppixels = ((int)( sqrt(planet->radius / KM_EARTH_RADIUS) * 30.)) + 1;
 			char *ptype = type_string (planet->type);
-			char info[100];
+			char info[200];
+			char em_buf[32];
+			char gas_buf[32];
 			
 			if (planet->type == tAsteroids)
-				ppixels = (int)(25.0 + ( 5.0 * log ((planet->mass * SUN_MASS_IN_EARTH_MASSES) / 
-													ASTEROID_MASS_LIMIT)));
+			{
+				/* Guard the log() domain: a degenerate zero/negative mass
+				 * must not produce NaN pixel sizes. */
+				if (planet->mass > 0.0)
+					ppixels = (int)(25.0 + ( 5.0 * log ((planet->mass * SUN_MASS_IN_EARTH_MASSES) /
+														ASTEROID_MASS_LIMIT)));
+				else
+					ppixels = 3;
+			}
 			
 			if (ppixels < 3)
 				ppixels = 3;
@@ -1179,18 +1223,22 @@ void html_thumbnails(planet_pointer innermost_planet,
 			if ((planet->type == tGasGiant)
 			 || (planet->type == tSubSubGasGiant)
 			 || (planet->type == tSubGasGiant))
-				sprintf(&info[0], "%s: %.1LfEM (c. %.0Lf&deg;)", 
-						ptype, planet->mass * SUN_MASS_IN_EARTH_MASSES,
+				sprintf(&info[0], "%s: %sEM (c. %.0Lf&deg;)",
+						ptype,
+						text_em(em_buf, sizeof(em_buf), planet->mass, 1),
 						planet->estimated_temp);
 			else if (planet->type == tUnknown)
-				sprintf(&info[0], "%s: %.1LfEM, %.2LfEM from gas (%.1Lf%c) Zone = %d", 
-						ptype, planet->mass * SUN_MASS_IN_EARTH_MASSES,
-						planet->gas_mass * SUN_MASS_IN_EARTH_MASSES,
+				sprintf(&info[0], "%s: %sEM, %sEM from gas (%.1Lf%c) Zone = %d",
+						ptype,
+						text_em(em_buf, sizeof(em_buf), planet->mass, 2),
+						text_em(gas_buf, sizeof(gas_buf), planet->gas_mass, 2),
 						100.0 * (planet->gas_mass / planet->mass), '%',
 						planet->orbit_zone);
 			else
-				sprintf(&info[0], "%s: %.2LfEM, %.2Lfg, %.1Lf&deg; Zone = %d", 
-						ptype, planet->mass * SUN_MASS_IN_EARTH_MASSES, planet->surf_grav, 
+				sprintf(&info[0], "%s: %sEM, %.2Lfg, %.1Lf&deg; Zone = %d",
+						ptype,
+						text_em(em_buf, sizeof(em_buf), planet->mass, 2),
+						planet->surf_grav,
 						(planet->surf_temp - FREEZING_POINT_OF_WATER),
 						planet->orbit_zone);
 			
@@ -1218,22 +1266,26 @@ void html_thumbnails(planet_pointer innermost_planet,
 				// DISPLAY THEM
 				char *mtype = type_string (moon->type);
 				int	mpixels = ((int)( sqrt(moon->radius / KM_EARTH_RADIUS) * 30.)) + 1;
-	
+
 				if ((moon->type == tGasGiant)
 				 || (moon->type == tSubSubGasGiant)
 				 || (moon->type == tSubGasGiant))
-					sprintf(&info[0], "%s: %.1LfEM (c. %.0Lf&deg;)", 
-							mtype, moon->mass * SUN_MASS_IN_EARTH_MASSES,
+					sprintf(&info[0], "%s: %sEM (c. %.0Lf&deg;)",
+							mtype,
+							text_em(em_buf, sizeof(em_buf), moon->mass, 1),
 							moon->estimated_temp);
 				else if (moon->type == tUnknown)
-					sprintf(&info[0], "%s: %.1LfEM, %.2LfEM from gas (%.1Lf%c) Zone = %d", 
-							mtype, moon->mass * SUN_MASS_IN_EARTH_MASSES,
-							moon->gas_mass * SUN_MASS_IN_EARTH_MASSES,
+					sprintf(&info[0], "%s: %sEM, %sEM from gas (%.1Lf%c) Zone = %d",
+							mtype,
+							text_em(em_buf, sizeof(em_buf), moon->mass, 2),
+							text_em(gas_buf, sizeof(gas_buf), moon->gas_mass, 2),
 							100.0 * (moon->gas_mass / moon->mass), '%',
 							moon->orbit_zone);
 				else
-					sprintf(&info[0], "%s: %.2LfEM, %.2Lfg, %.1Lf&deg; Zone = %d", 
-							mtype, moon->mass * SUN_MASS_IN_EARTH_MASSES, moon->surf_grav, 
+					sprintf(&info[0], "%s: %sEM, %.2Lfg, %.1Lf&deg; Zone = %d",
+							mtype,
+							text_em(em_buf, sizeof(em_buf), moon->mass, 2),
+							moon->surf_grav,
 							(moon->surf_temp - FREEZING_POINT_OF_WATER),
 							moon->orbit_zone);
 	
@@ -1378,41 +1430,80 @@ void html_thumbnail_totals(FILE *file)
 		        	"\t<font size='+1' color='" TXHEADER "'>"
 		        	"<b>Summary</b></font></th></tr>\n"
 	        );
-	
-	fprintf (file, 
+
+	/* Range lines: the run statistics start with min > max, meaning
+	 * "no breathable body was found"; the historical version printed
+	 * those initial sentinels (1000.00 - 0.00) as if they were data. */
+	fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
 				"\tEarthlike planets\n</td><td align=center>\n\t%d\n</td></tr>\n", total_earthlike);
-	fprintf (file, 
+	fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
 				"\tBreathable atmospheres\n</td><td align=center>\n\t%d\n</td></tr>\n", total_habitable);
-	fprintf (file, 
+
+	if (max_breathable_g < min_breathable_g)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tBreathable g range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n", 
-			 min_breathable_g, 
+				"\tBreathable g range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tBreathable g range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n",
+			 min_breathable_g,
 			 max_breathable_g);
-	fprintf (file, 
+
+	if (max_breathable_terrestrial_g < min_breathable_terrestrial_g)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tTerrestrial g range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n", 
+				"\tTerrestrial g range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tTerrestrial g range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n",
 			 min_breathable_terrestrial_g,
 			 max_breathable_terrestrial_g);
-	fprintf (file, 
+
+	if (max_breathable_p < min_breathable_p)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tBreathable pressure range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n", 
-			 min_breathable_p, 
+				"\tBreathable pressure range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tBreathable pressure range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n",
+			 min_breathable_p,
 			 max_breathable_p);
-	fprintf (file, 
+
+	if (max_breathable_temp < min_breathable_temp)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tBreathable temp range\n</td><td align=center>\n\t%+.1Lf C -  %+.1Lf C\n</td></tr>\n", 
-			 min_breathable_temp - EARTH_AVERAGE_KELVIN, 
+				"\tBreathable temp range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tBreathable temp range\n</td><td align=center>\n\t%+.1Lf C -  %+.1Lf C\n</td></tr>\n",
+			 min_breathable_temp - EARTH_AVERAGE_KELVIN,
 			 max_breathable_temp - EARTH_AVERAGE_KELVIN);
-	fprintf (file, 
+
+	if (max_breathable_l < min_breathable_l)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tBreathable illumination range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n", 
-			 min_breathable_l, 
+				"\tBreathable illumination range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tBreathable illumination range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n",
+			 min_breathable_l,
 			 max_breathable_l);
-	fprintf (file, 
+
+	if (max_breathable_terrestrial_l < min_breathable_terrestrial_l)
+		fprintf (file,
 			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
-				"\tTerrestrial illumination range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n", 
+				"\tTerrestrial illumination range\n</td><td align=center>\n\tN/A (no breathable bodies)\n</td></tr>\n");
+	else
+		fprintf (file,
+			"<tr bgcolor='" BGTABLE "'><td align=right>\n"
+				"\tTerrestrial illumination range\n</td><td align=center>\n\t%4.2Lf -  %4.2Lf\n</td></tr>\n",
 			 min_breathable_terrestrial_l,
 			 max_breathable_terrestrial_l);
 
@@ -1430,6 +1521,7 @@ void html_decribe_planet(planet_pointer planet,
 						 FILE*			file)
 {
 	char	planet_id[80];
+	char	html_num_buf[64];
 	char	*typeString = type_string (planet->type);
 	
 	if (moons == 00)
@@ -1504,17 +1596,20 @@ void html_decribe_planet(planet_pointer planet,
 	}
 
 	fprintf (file,
-			"%5.3Lf Earth masses<br>",
-			planet->mass * SUN_MASS_IN_EARTH_MASSES);
+			"%s Earth masses<br>",
+			text_em(html_num_buf, sizeof(html_num_buf),
+					planet->mass, 3));
 
 	if ((planet->dust_mass * SUN_MASS_IN_EARTH_MASSES >= 0.0006)
 	 && (planet->gas_mass * SUN_MASS_IN_EARTH_MASSES >= 0.0006))
 	{
 		fprintf (file,
-			"%5.3Lf Earth masses dust<br>"
-			"%5.3Lf Earth masses gas<br>",
-				planet->dust_mass * SUN_MASS_IN_EARTH_MASSES,
-				planet->gas_mass * SUN_MASS_IN_EARTH_MASSES);
+			"%s Earth masses dust<br>"
+			"%s Earth masses gas<br>",
+				text_em(html_num_buf, sizeof(html_num_buf),
+						planet->dust_mass, 3),
+				text_em(html_num_buf, sizeof(html_num_buf),
+						planet->gas_mass, 3));
 	}
 	
 	fprintf (file,
@@ -1698,19 +1793,33 @@ void html_decribe_planet(planet_pointer planet,
 	fprintf (file,
 		"<tr><th>Length of year</th>"
 		"<td>%4.2Lf Earth days</td>"
-		"<td>%4.2Lf Local days",
-			planet->orb_period,
-			(planet->orb_period*24) / planet->day);
+		"<td>",
+			planet->orb_period);
+
+	/* Local days = orbital period in hours / rotation period in hours;
+	 * a stopped rotation has no defined value (sentinel). */
+	if (sg_num_available(planet->day) && (planet->day > 0.0))
+		fprintf (file, "%4.2Lf Local days",
+				(planet->orb_period*24) / planet->day);
+	else
+		fprintf (file, "N/A Local days");
+
 	if (planet->orb_period > DAYS_IN_A_YEAR)
 		fprintf (file,
 			"<br>%4.2Lf Earth years",
 			planet->orb_period / DAYS_IN_A_YEAR);
-	fprintf (file, 
-		"</td></tr>\n");
 	fprintf (file,
-		"<tr><th>Length of day</th><td>%4.2Lf hours</td>"
+		"</td></tr>\n");
+
+	if (sg_num_available(planet->day))
+		snprintf(html_num_buf, sizeof(html_num_buf), "%4.2Lf", planet->day);
+	else
+		snprintf(html_num_buf, sizeof(html_num_buf), "N/A (rotation stopped)");
+
+	fprintf (file,
+		"<tr><th>Length of day</th><td>%s hours</td>"
 		"<td></td></tr>\n",
-			planet->day);
+			html_num_buf);
 
 	if ((planet->type != tGasGiant)
 	 && (planet->type != tSubGasGiant) 
@@ -1769,29 +1878,35 @@ void html_describe_system(planet_pointer 	innermost_planet,
 		planet=planet->next_planet, counter++)
 	{
 		char	*typeString = type_string (planet->type);
-		
+		char	overview_em[32];
+		char	overview_er[32];
+
 		fprintf (file,
 	        "<tr align=right>\n"
 				"\t<td><a href='#%d'>%d</a></td>\n"
 				"\t<td align=center><img alt='%s' src='%sref/%s.gif'></td>\n"
 				"\t<td colspan=2>%s</td>\n"
 				"\t<td>%7.3Lf  AU</td>\n"
-				"\t<td>%8.3Lf EM</td>\n"
-				"\t<td>%8.3Lf ER</td>"
+				"\t<td>%8s EM</td>\n"
+				"\t<td>%8s ER</td>"
 				"</tr>\n",
-				counter, counter, 
-			    typeString, 
-			    url_path, 
-			    typeString, 
-			    typeString, 
-				planet->a, 
-				planet->mass * SUN_MASS_IN_EARTH_MASSES,
-				planet->radius / KM_EARTH_RADIUS);
+				counter, counter,
+			    typeString,
+			    url_path,
+			    typeString,
+			    typeString,
+				planet->a,
+				sg_fmt_human(overview_em, sizeof(overview_em),
+							 planet->mass * SUN_MASS_IN_EARTH_MASSES, 3),
+				sg_fmt_human(overview_er, sizeof(overview_er),
+							 planet->radius / KM_EARTH_RADIUS, 3));
 		for (moon=planet->first_moon, moons=1;
 			moon != NULL;
 			moon=moon->next_planet, moons++)
 		{
 			char	*typeString = type_string (moon->type);
+			char	moon_em[32];
+			char	moon_er[32];
 
 			fprintf (file,
 				"<tr align=right>\n"
@@ -1800,17 +1915,19 @@ void html_describe_system(planet_pointer 	innermost_planet,
 					"\t<td align=center><img alt='%s' src='%sref/%s.gif'></td>\n"
 					"\t<td>%s</td>\n"
 					"\t<td>%7.3Lf  AU</td>\n"
-					"\t<td>%8.3Lf EM</td>\n"
-					"\t<td>%8.3Lf ER</td>"
+					"\t<td>%8s EM</td>\n"
+					"\t<td>%8s ER</td>"
 					"</tr>\n",
-					counter, moons, counter, moons, 
-					typeString, 
-					url_path, 
-					typeString, 
-					typeString, 
-					moon->a, 
-					moon->mass * SUN_MASS_IN_EARTH_MASSES,
-					moon->radius / KM_EARTH_RADIUS);
+					counter, moons, counter, moons,
+					typeString,
+					url_path,
+					typeString,
+					typeString,
+					moon->a,
+					sg_fmt_human(moon_em, sizeof(moon_em),
+								 moon->mass * SUN_MASS_IN_EARTH_MASSES, 3),
+					sg_fmt_human(moon_er, sizeof(moon_er),
+								 moon->radius / KM_EARTH_RADIUS, 3));
 		}
 
 	}
@@ -1839,20 +1956,36 @@ void html_describe_system(planet_pointer 	innermost_planet,
 void celestia_describe_system(planet_pointer innermost_planet, char* designation)
 {
 	planet_pointer planet;
-	int counter; 
-	
+	int counter;
+	char	ssc_name[400];
+	char	ssc_num_buf[32];
+
+	sg_escape_ssc_string(ssc_name, sizeof(ssc_name), designation);
+
 	for (planet=innermost_planet, counter=1;
 		planet != NULL;
 		planet=planet->next_planet, counter++)
 	{
 		char	*typeString = texture_name (planet->type);
-		
-		printf("\"p%d\" \"%s\"\n", counter, designation);
+
+		/* A body without a usable radius cannot be a Celestia object:
+		 * skipping it (with a note) keeps the SSC file valid instead of
+		 * exporting sentinel tokens (PLAN.MD BUG-02). */
+		if (!sg_num_available(planet->radius))
+		{
+			fprintf (stderr,
+					 "celestia: skipping %s p%d -- radius unavailable\n",
+					 designation, counter);
+			continue;
+		}
+
+		printf("\"p%d\" %s\n", counter, ssc_name);
 		printf("{\n");
 
 		printf("	Texture \"%s\"\n",	typeString);
 		printf("	Radius %3.1Lf\n", planet->radius);
-		printf("	Mass %3.1Lf\n", planet->mass * SUN_MASS_IN_EARTH_MASSES);
+		printf("	Mass %s\n",
+				text_em(ssc_num_buf, sizeof(ssc_num_buf), planet->mass, 1));
 		printf("\n");
 		
 		switch (planet->type)
@@ -1961,9 +2094,26 @@ void celestia_describe_system(planet_pointer innermost_planet, char* designation
 		printf("	        MeanLongitude 0\n");
 		printf("	}\n");
 		printf("\n");
-		printf("	RotationPeriod    %4.2Lf\n", planet->day);
+
+		/* Optional properties with sentinel values are omitted (BUG-02):
+		 * a stopped rotation has no meaningful RotationPeriod, and an
+		 * unmodeled albedo is not exported as a number. */
+		if (sg_num_available(planet->day))
+			printf("	RotationPeriod    %4.2Lf\n", planet->day);
+		else
+			fprintf (stderr,
+					 "celestia: %s p%d -- RotationPeriod omitted (rotation stopped)\n",
+					 designation, counter);
+
 		printf("	Obliquity         %2.0Lf\n", planet->axial_tilt);
-		printf("	Albedo            %5.3Lf\n", planet->albedo);
+
+		if (sg_num_available(planet->albedo))
+			printf("	Albedo            %s\n",
+					sg_fmt_human(ssc_num_buf, sizeof(ssc_num_buf), planet->albedo, 3));
+		else
+			fprintf (stderr,
+					 "celestia: %s p%d -- Albedo omitted (value unavailable)\n",
+					 designation, counter);
 
 		printf("}\n");
 		printf("\n");
