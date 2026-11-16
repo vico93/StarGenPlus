@@ -1,0 +1,6 @@
+Size of float: 4
+Size of doubles: 8
+Size of long doubles: 8
+
+Earth Eff Temp: 287.1 K,  14.0 C, Earth rel:   0.0 C
+

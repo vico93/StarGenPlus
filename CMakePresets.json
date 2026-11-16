@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "msvc2026",
+      "displayName": "Visual Studio 2026 Build Tools (x64, multi-config)",
+      "description": "VS 2026 (Dev18) generator; works with BuildTools-only installs. Debug and Release configurations.",
+      "generator": "Visual Studio 18 2026",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build/msvc2026-x64",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc2026-debug",
+      "displayName": "Build (MSVC 2026 x64 Debug)",
+      "configurePreset": "msvc2026",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc2026-release",
+      "displayName": "Build (MSVC 2026 x64 Release)",
+      "configurePreset": "msvc2026",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "msvc2026-test-debug",
+      "displayName": "Test (MSVC 2026 x64 Debug)",
+      "configurePreset": "msvc2026",
+      "configuration": "Debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "msvc2026-test-release",
+      "displayName": "Test (MSVC 2026 x64 Release)",
+      "configurePreset": "msvc2026",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

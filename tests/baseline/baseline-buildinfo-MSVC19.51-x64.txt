@@ -1,0 +1,20 @@
+stargen_revision: $Revision: 1.43 $
+compiler:
+  _MSC_VER: 1951
+  _MSC_FULL_VER: 195136260
+  __STDC_VERSION__: 201710
+long double:
+  sizeof: 8
+  LDBL_MANT_DIG: 53
+  LDBL_DIG: 15
+  LDBL_DECIMAL_DIG: (not defined by this toolchain)
+  DECIMAL_DIG: 17
+  LDBL_MAX: 1.79769e+308
+  LDBL_EPSILON: 2.22045e-16
+double:
+  sizeof: 8
+  DBL_MANT_DIG: 53
+  DBL_DIG: 15
+PRNG:
+  RAND_MAX: 32767
+  sizeof(long): 4
