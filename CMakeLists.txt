@@ -39,6 +39,9 @@ add_library(stargen_core STATIC
 	display.c
 	Dumas.c
 	enviro.c
+	sg_escape.c
+	sg_numfmt.c
+	sg_value_status.c
 	stargen.c
 	utils.c
 )

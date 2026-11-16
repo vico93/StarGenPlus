@@ -15,6 +15,14 @@ add_executable(test_repeat_call test_repeat_call.c)
 target_link_libraries(test_repeat_call PRIVATE stargen_core)
 add_test(NAME repeat_call COMMAND test_repeat_call)
 
+add_executable(test_numfmt test_numfmt.c)
+target_link_libraries(test_numfmt PRIVATE stargen_core)
+add_test(NAME numfmt COMMAND test_numfmt)
+
+add_executable(test_escape test_escape.c)
+target_link_libraries(test_escape PRIVATE stargen_core)
+add_test(NAME escape COMMAND test_escape)
+
 # MSVC: run-time DLL discovery for test processes. The toolset bin
 # directory holds the AddressSanitizer runtime (clang_rt.asan_dynamic-*.dll,
 # needed when STARGEN_ENABLE_ASAN is on), and the debug CRT redist
@@ -35,6 +43,6 @@ if(MSVC)
 		list(APPEND _msvc_test_path "${_d}")
 	endforeach()
 
-	set_tests_properties(buildinfo fixtures repeat_call PROPERTIES
+	set_tests_properties(buildinfo fixtures repeat_call numfmt escape PROPERTIES
 						 ENVIRONMENT "PATH=${_msvc_test_path};$ENV{PATH}")
 endif()
