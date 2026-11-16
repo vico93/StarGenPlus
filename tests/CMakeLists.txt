@@ -38,6 +38,12 @@ add_test(NAME csv_columns_moons
 				 -Dargs=-C\ -x\ -M\ -g\ -s42\ --
 				 -P ${CMAKE_CURRENT_SOURCE_DIR}/csv_columns_check.cmake)
 
+# Headless JSON smoke tests (Phase D).
+add_test(NAME json_smoke
+		 COMMAND ${CMAKE_COMMAND}
+				 -Dexe=$<TARGET_FILE:stargen>
+				 -P ${CMAKE_CURRENT_SOURCE_DIR}/json_smoke_check.cmake)
+
 # MSVC: run-time DLL discovery for test processes. The toolset bin
 # directory holds the AddressSanitizer runtime (clang_rt.asan_dynamic-*.dll,
 # needed when STARGEN_ENABLE_ASAN is on), and the debug CRT redist

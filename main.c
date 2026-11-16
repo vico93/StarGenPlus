@@ -38,6 +38,7 @@
 #include	"const.h"
 #include	"structs.h"
 #include	"stargen.h"
+#include	"sg_headless.h"
 
 /*
  *		StarGen supports private catalogs. The two here are ones I am using
@@ -169,6 +170,24 @@ int main (int argc, char *argv[])
 	if ((c = strrchr(prognam, DIRSEP[0])) != NULL)
 		prognam = c + 1;
 	
+	/* New-style headless commands (--json / --list-stars-json / --mcp)
+	 * are detected before the legacy single-dash option parser: the two
+	 * CLI dialects are independent. */
+	for (index = 1; index < argc; index++)
+	{
+		sg_headless_command	command	= sg_cmd_none;
+
+		if (strcmp(argv[index], "--json") == 0)
+			command = sg_cmd_json;
+		else if (strcmp(argv[index], "--list-stars-json") == 0)
+			command = sg_cmd_list_stars_json;
+		else if (strcmp(argv[index], "--mcp") == 0)
+			command = sg_cmd_mcp;
+
+		if (command != sg_cmd_none)
+			return sg_headless_main(argc, argv, command);
+	}
+
 	if (argc <= 1)
 	{
 		usage(prognam);

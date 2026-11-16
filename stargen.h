@@ -94,6 +94,39 @@ extern catalog  jimb;
 extern planets mercury;					// For building private catalogs
 extern planet_pointer solar_system;		// Head of the Solar System fixture chain
 
+extern long		flag_seed;				// Effective PRNG seed of the run
+extern long double	dust_density_coeff;	// Global dust density coefficient
+extern planet_pointer	innermost_planet;	// Head of the generated chain
+
+/*
+ *	Side-effect-free body classification predicates, shared by the CLI
+ *	statistics and the structured exporter (they consume no RNG).
+ */
+int sg_is_habitable_body(planet_pointer planet);
+int sg_is_habitable_jovian(planet_pointer planet);
+int sg_is_earthlike_body(planet_pointer planet);
+
+/*
+ *	Initialize the gas table for use (fills unset max_ipp values and
+ *	sorts by decreasing abundance). Idempotent; must run before any
+ *	atmosphere calculation or chemistry listing.
+ */
+void init_chemistry(void);
+
+/*
+ *	Reset the run-global statistics/counters (mirrors the static
+ *	initializers); used by both the legacy driver and the headless modes.
+ */
+void reset_run_statistics(void);
+
+/*
+ *	Holman & Wiegert's critical semi-major axis for S-type planetary
+ *	orbits in a binary system (0 when the catalog star has no binary
+ *	companion). Shared by the legacy driver and the headless modes.
+ */
+long double catalog_outer_limit(const catalog *cat, int sys_no,
+								long double primary_mass);
+
 
 extern int          flag_verbose;		// Likely to move into stargen() args.
 

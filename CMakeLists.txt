@@ -40,6 +40,9 @@ add_library(stargen_core STATIC
 	Dumas.c
 	enviro.c
 	sg_escape.c
+	sg_export.c
+	sg_headless.c
+	sg_jsonw.c
 	sg_numfmt.c
 	sg_value_status.c
 	stargen.c

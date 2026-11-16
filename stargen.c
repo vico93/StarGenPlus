@@ -322,6 +322,7 @@ ChemTable    gases[] =
 int max_gas = (sizeof(gases)/sizeof(ChemTable))-1;
 
 void init(void);
+void init_chemistry(void);
 void generate_stellar_system(sun*, int, planet_pointer, char, int, char *, long double, int, int, long double);
 void calculate_gases(sun*, planet_pointer, char*);
 void generate_planet(planet_pointer, int, sun*, int, char*, int, int, int);
@@ -769,14 +770,12 @@ void generate_planet(planet_pointer	planet,
 			planet->estimated_terr_temp		= est_temp(sun->r_ecosphere, planet->a,  EARTH_ALBEDO);
  			
 			{
-				long double temp = planet->estimated_terr_temp;
-
-				if ((temp >= FREEZING_POINT_OF_WATER)
-				 && (temp <= EARTH_AVERAGE_KELVIN + 10.)
-				 && (sun->age > 2.0E9))
+				if (sg_is_habitable_jovian(planet))
 				{
+					long double temp = planet->estimated_terr_temp;
+
 					habitable_jovians++;
-				
+
 					if (flag_verbose & 0x8000)
 					{
 						fprintf (stderr, "%s\t%s (%4.2LfEM %5.3Lf By)%s with earth-like temperature (%.1Lf C, %.1Lf F, %+.1Lf C Earth).\n",
@@ -973,13 +972,63 @@ void generate_planet(planet_pointer	planet,
 
 }
 
+/*
+ *	Side-effect-free classification predicates (PLAN.MD §5): the CLI
+ *	statistics and the structured exporter must agree, so the conditions
+ *	live here instead of being duplicated. They consume no RNG and
+ *	modify nothing.
+ */
+int sg_is_habitable_body(planet_pointer planet)
+{
+	return (breathability(planet) == BREATHABLE)
+		&& (!planet->resonant_period)			// Option needed?
+		&& sg_num_available(planet->day)
+		&& ((int)planet->day != (int)(planet->orb_period * 24.0));
+}
+
+int sg_is_habitable_jovian(planet_pointer planet)
+{
+	long double temp = planet->estimated_terr_temp;
+
+	return (planet->sun != NULL)
+		&& (planet->sun->age > 2.0E9)
+		&& (temp >= FREEZING_POINT_OF_WATER)
+		&& (temp <= EARTH_AVERAGE_KELVIN + 10.);
+}
+
+int sg_is_earthlike_body(planet_pointer planet)
+{
+	long double  rel_temp   = (planet->surf_temp -  FREEZING_POINT_OF_WATER) -
+							   EARTH_AVERAGE_CELSIUS;
+	long double	 seas       = (planet->hydrosphere * 100.0);
+	long double	 clouds     = (planet->cloud_cover * 100.0);
+	long double	 pressure   = (planet->surf_pressure /
+							   EARTH_SURF_PRES_IN_MILLIBARS);
+	long double	 ice        = (planet->ice_cover * 100.0);
+	long double	 gravity    = planet->surf_grav;
+
+	return ((gravity 	>= .8) &&
+			(gravity 	<= 1.2) &&
+			(rel_temp 	>= -2.0) &&
+			(rel_temp 	<= 3.0) &&
+			(ice 		<= 10.) &&
+			(pressure   >= 0.5) &&
+			(pressure   <= 2.0) &&
+			(clouds		>= 40.) &&
+			(clouds		<= 80.) &&
+			(seas 		>= 50.) &&
+			(seas 		<= 80.) &&
+			(planet->type != tWater) &&
+			(breathability (planet) == BREATHABLE));
+}
+
 void check_planet(planet_pointer	planet,
 				  char*				planet_id,
 				  int				is_moon)
 {
 	{
 		int tIndex = 0;
-	
+
 		switch (planet->type)
 		{
 			case tUnknown:			tIndex = 0;		break;
@@ -995,27 +1044,22 @@ void check_planet(planet_pointer	planet,
 			case tAsteroids: 		tIndex = 10;	break;
 			case t1Face:			tIndex = 11;	break;
 		}
-		
+
 		if (type_counts[tIndex] == 0)
 			++type_count;
-		
+
 		++type_counts[tIndex];
-		
+
 	}
-	
+
 	/* Check for and list planets with breathable atmospheres */
-	
+
+	if (sg_is_habitable_body(planet))
 	{
-		unsigned int breathe = breathability (planet);
-		
-		if ((breathe == BREATHABLE) &&
-			(!planet->resonant_period) &&		// Option needed?
-			((int)planet->day != (int)(planet->orb_period * 24.0)))
-		{
 			int	list_it	= FALSE;
-			long double illumination = pow2 (1.0 / planet->a) 
+			long double illumination = pow2 (1.0 / planet->a)
 										* (planet->sun)->luminosity;
-			
+
 			habitable++;
 			
 			if (min_breathable_temp > planet->surf_temp)
@@ -1121,7 +1165,7 @@ void check_planet(planet_pointer	planet,
 				list_it = TRUE;
 			
 			if (list_it)
-			fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\tl=%4.2Lf\t%s\n", 
+			fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\tl=%4.2Lf\t%s\n",
 						type_string (planet->type),
 						planet->surf_pressure,
 						planet->mass * SUN_MASS_IN_EARTH_MASSES,
@@ -1129,7 +1173,6 @@ void check_planet(planet_pointer	planet,
 						planet->surf_temp  - EARTH_AVERAGE_KELVIN,
 						illumination,
 						planet_id);
-		}
 	}
 
 	if (is_moon
@@ -1168,35 +1211,12 @@ void check_planet(planet_pointer	planet,
 		}
 	}
 	
+	if (sg_is_earthlike_body(planet))
 	{
-		long double  rel_temp   = (planet->surf_temp -  FREEZING_POINT_OF_WATER) - 
-								   EARTH_AVERAGE_CELSIUS;
-		long double	 seas       = (planet->hydrosphere * 100.0);
-		long double	 clouds     = (planet->cloud_cover * 100.0);
-		long double	 pressure   = (planet->surf_pressure / 
-								   EARTH_SURF_PRES_IN_MILLIBARS);
-		long double	 ice        = (planet->ice_cover * 100.0);
-		long double	 gravity    = planet->surf_grav;
-		unsigned int breathe    = breathability (planet);
-	
-		if ((gravity 	>= .8) &&
-			(gravity 	<= 1.2) &&
-			(rel_temp 	>= -2.0) &&
-			(rel_temp 	<= 3.0) &&
-			(ice 		<= 10.) &&
-			(pressure   >= 0.5) &&
-			(pressure   <= 2.0) &&
-			(clouds		>= 40.) &&
-			(clouds		<= 80.) &&
-			(seas 		>= 50.) &&
-			(seas 		<= 80.) &&
-			(planet->type != tWater) &&
-			(breathe    == BREATHABLE))
-		{
 			earthlike++;
 
 			if (flag_verbose & 0x0008)
-				fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\t%d %s\tEarth-like\n", 
+				fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\t%d %s\tEarth-like\n",
 								type_string (planet->type),
 								planet->surf_pressure,
 								planet->mass * SUN_MASS_IN_EARTH_MASSES,
@@ -1204,15 +1224,21 @@ void check_planet(planet_pointer	planet,
 								planet->surf_temp  - EARTH_AVERAGE_KELVIN,
 								habitable,
 								planet_id);
-		} else if ((flag_verbose & 0x0008) &&
-				 (breathe   == BREATHABLE) &&
-				 (gravity	 > 1.3) &&
-				 (habitable	 > 1) &&
-				 ((rel_temp  < -2.0) ||
-				  (ice		 > 10.))
-				)
+	}
+	else if (flag_verbose & 0x0008)
+	{
+		long double	 rel_temp	= (planet->surf_temp - FREEZING_POINT_OF_WATER) -
+								   EARTH_AVERAGE_CELSIUS;
+		long double	 ice		= (planet->ice_cover * 100.0);
+
+		if ((breathability (planet) == BREATHABLE) &&
+			(planet->surf_grav	 > 1.3) &&
+			(habitable	 > 1) &&
+			((rel_temp  < -2.0) ||
+			 (ice		 > 10.))
+			)
 		{
-			fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\t%s\tSphinx-like\n", 
+			fprintf (stderr, "%12s\tp=%4.2Lf\tm=%4.2Lf\tg=%4.2Lf\tt=%+.1Lf\t%s\tSphinx-like\n",
 					type_string (planet->type),
 					planet->surf_pressure,
 					planet->mass * SUN_MASS_IN_EARTH_MASSES,
@@ -1308,7 +1334,7 @@ static int diminishing_pressure(const void *xp, const void *yp)
  *	(PLAN.MD §4: "Only some counters reset. Totals/extrema can persist
  *	across calls."). Values mirror the historical static initializers.
  */
-static void reset_run_statistics(void)
+void reset_run_statistics(void)
 {
 	total_earthlike				 = 0;
 	total_habitable				 = 0;
@@ -1327,6 +1353,26 @@ static void reset_run_statistics(void)
 	min_breathable_l			 = 1000.0;
 	max_breathable_terrestrial_l = 0.0;
 	max_breathable_l			 = 0.0;
+}
+
+/*
+ *	Fill unset max_ipp entries and sort the chemistry table by
+ *	decreasing abundance. Both the legacy driver and the headless/JSON
+ *	path must call this before any gas computation, so gas results are
+ *	identical across output modes (the sort determines table order and
+ *	thus which name/symbol the exporters find for a chemical id).
+ */
+void init_chemistry(void)
+{
+	int	index;
+
+	for (index = 0; index < max_gas; index++)
+		if (gases[index].max_ipp == 0.0)
+			gases[index].max_ipp = INCREDIBLY_LARGE_NUMBER;
+
+	qsort(gases, (sizeof(gases) / sizeof(ChemTable)) - 1,
+				  sizeof(*gases),
+				  diminishing_abundance);
 }
 
 int stargen (actions		action,
@@ -1438,13 +1484,7 @@ int stargen (actions		action,
 		strncat (subdir, "/", 80-strlen(subdir));
 	}
 	
-	for (index = 0; index < max_gas; index++)
-		if (gases[index].max_ipp == 0.0)
-			gases[index].max_ipp = INCREDIBLY_LARGE_NUMBER;
-			
-	qsort(gases, (sizeof(gases) / sizeof(ChemTable)) - 1, 
-				  sizeof(*gases), 
-				  diminishing_abundance);
+	init_chemistry();
 
 	switch (action)
 	{
@@ -1746,26 +1786,8 @@ int stargen (actions		action,
 			}
 
 			snprintf (&file_name[0], sizeof(file_name), "%s-%ld", designation, flag_seed);
-			
-			if (cat_arg->stars[sys_no].m2 > .001)
-			{
-				/*
-				 *	The following is Holman & Wiegert's equation 1 from
-				 *	Long-Term Stability of Planets in Binary Systems
-				 *	The Astronomical Journal, 117:621-628, Jan 1999
-				 */
-				long double m1 = sun.mass;
-				long double m2 = cat_arg->stars[sys_no].m2;
-				long double mu = m2 / (m1 + m2);
-				long double e = cat_arg->stars[sys_no].e;
-				long double a = cat_arg->stars[sys_no].a;
-				
-				outer_limit = (0.464 + (-0.380 * mu) + (-0.631 * e) +
-							   (0.586 * mu * e) + (0.150 * pow2(e)) +
-							   (-0.198 * mu * pow2(e))) * a;
-			}
-			else
-				outer_limit = 0.0;
+
+			outer_limit = catalog_outer_limit(cat_arg, sys_no, sun.mass);
 		}
 		else if (reuse_solar_system)
 		{
