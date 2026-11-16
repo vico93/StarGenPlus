@@ -23,6 +23,9 @@
 #include	"display.h"
 #include	"enviro.h"
 #include	"stargen.h"
+#include	"sg_numfmt.h"
+#include	"sg_value_status.h"
+#include	"sg_escape.h"
 
 #define	MAX_EXP_DIGS	3
 #define	MAX_MAN_DIGS	20
@@ -165,14 +168,183 @@ void text_describe_system(planet_pointer innermost_planet, int do_gases, long in
 	}
 }
 
+
+/*
+ *	Legacy CSV field writers. The format is the historical single-table
+ *	dialect (single-quoted strings, ", " separators); see docs/CSV-FORMAT.md
+ *	for the documented corrections:
+ *	  - numeric fields use locale-neutral, round-trip precision and keep
+ *	    their documented units (masses in SOLAR MASSES -- BUG-01);
+ *	  - sentinel/unavailable values become empty fields (BUG-02);
+ *	  - string fields are escaped (BUG-05);
+ *	  - moon rows carry the same column count as the planet header
+ *	    (the historical rows were one column short).
+ */
+
+static void csv_sep(FILE *file)
+{
+	fputs(", ", file);
+}
+
+static void csv_ld(FILE *file, long double v)
+{
+	char	buf[64];
+
+	csv_sep(file);
+	fputs(sg_fmt_csv_field(v, buf, sizeof(buf)), file);
+}
+
+static void csv_int(FILE *file, int i)
+{
+	fprintf(file, ", %d", i);
+}
+
+static void csv_quoted(FILE *file, const char *s)
+{
+	char	buf[600];
+
+	sg_escape_csv_quoted(buf, sizeof(buf), s);
+	fprintf(file, ", %s", buf);
+}
+
+/*
+ *	Build the atmosphere description string (legacy descriptive form;
+ *	the structured JSON exporter emits full constituent data). Bounded
+ *	appends only: the historical version sprintf'd unchecked into a
+ *	fixed 2000-byte buffer.
+ */
+static void csv_atmosphere_string(char *buf, size_t size,
+								  planet_pointer body, int do_gases)
+{
+	size_t	used = 0;
+	int		i;
+
+	buf[0] = '\0';
+
+	if (!do_gases || body->gases <= 0 || body->atmosphere == NULL)
+		return;
+
+	for (i = 0; i < body->gases; i++)
+	{
+		int		n;
+		int		index = max_gas;
+		int		poisonous = FALSE;
+		int		written;
+
+		for (n = 0; n < max_gas; n++)
+		{
+			if (gases[n].num == body->atmosphere[i].num)
+				index = n;
+		}
+
+		if (inspired_partial_pressure(body->surf_pressure,
+									  body->atmosphere[i].surf_pressure)
+			> gases[index].max_ipp)
+			poisonous = TRUE;
+
+		if (((body->atmosphere[i].surf_pressure
+			  / body->surf_pressure) > .0005)
+			|| poisonous)
+		{
+			written = snprintf(buf + used, size - used,
+							   "%s %.1Lf%% %.0Lfmb (ipp:%.0Lf)%s; ",
+							   gases[index].symbol,
+							   100. * (body->atmosphere[i].surf_pressure /
+									   body->surf_pressure),
+							   body->atmosphere[i].surf_pressure,
+							   inspired_partial_pressure(body->surf_pressure,
+														 body->atmosphere[i].surf_pressure),
+							   poisonous ? " poisonous" : "");
+
+			if (written < 0)
+				break;
+
+			used += (size_t) written;
+
+			if (used >= size)
+			{
+				used = size - 1;		/* truncated; stop appending	*/
+				break;
+			}
+		}
+	}
+}
+
+static void csv_write_body_row(FILE				*file,
+							   const char		*system_name,
+							   planet_pointer	body,
+							   int				body_no,
+							   int				planet_no,	/* 0 for planets */
+							   int				do_gases)
+{
+	char	id[400];
+	char	escaped[600];
+	char	atmos[2000];
+
+	if (planet_no > 0)
+		snprintf(id, sizeof(id), "%s %d.%d", system_name, planet_no, body_no);
+	else
+		snprintf(id, sizeof(id), "%s %d", system_name, body_no);
+
+	/* First field: no leading separator. */
+	sg_escape_csv_quoted(escaped, sizeof(escaped), id);
+	fputs(escaped, file);
+
+	csv_ld(file, body->a);
+	csv_ld(file, body->e);
+	csv_ld(file, body->axial_tilt);
+	csv_ld(file, body->mass);
+	csv_int(file, body->gas_giant);
+	csv_ld(file, body->dust_mass);
+	csv_ld(file, body->gas_mass);
+	csv_ld(file, body->core_radius);
+	csv_ld(file, body->radius);
+	csv_int(file, body->orbit_zone);
+	csv_ld(file, body->density);
+	csv_ld(file, body->orb_period);
+	csv_ld(file, body->day);
+	csv_int(file, body->resonant_period);
+	csv_ld(file, body->esc_velocity);
+	csv_ld(file, body->surf_accel);
+	csv_ld(file, body->surf_grav);
+	csv_ld(file, body->rms_velocity);
+	csv_ld(file, body->molec_weight);
+	csv_ld(file, body->volatile_gas_inventory);
+	csv_ld(file, body->surf_pressure);
+	csv_int(file, body->greenhouse_effect);
+	csv_ld(file, body->boil_point);
+	csv_ld(file, body->albedo);
+	csv_ld(file, body->exospheric_temp);
+	csv_ld(file, body->estimated_temp);
+	csv_ld(file, body->estimated_terr_temp);
+	csv_ld(file, body->surf_temp);
+	csv_ld(file, body->greenhs_rise);
+	csv_ld(file, body->high_temp);
+	csv_ld(file, body->low_temp);
+	csv_ld(file, body->max_temp);
+	csv_ld(file, body->min_temp);
+	csv_ld(file, body->hydrosphere);
+	csv_ld(file, body->cloud_cover);
+	csv_ld(file, body->ice_cover);
+
+	csv_atmosphere_string(atmos, sizeof(atmos), body, do_gases);
+	csv_quoted(file, atmos);
+	csv_quoted(file, type_string(body->type));
+	csv_int(file, body->minor_moons);
+
+	fputc('\n', file);
+}
+
 void csv_describe_system(FILE *file, planet_pointer innermost_planet, int do_gases, long int seed)
 {
 	planet_pointer 	planet;
 	sun*			sun = innermost_planet->sun;
-	int 			counter; 
-	char 			buffer[2000];
+	int 			counter;
 	planet_pointer 	moon;
-	int 			moons; 
+	int 			moons;
+
+	if (file == NULL)
+		return;
 
 	fprintf (file,
 			"'%s', '%s', '%s', '%s', '%s', '%s', '%s'\n",
@@ -185,16 +357,14 @@ void csv_describe_system(FILE *file, planet_pointer innermost_planet, int do_gas
 			"r_ecosphere"
 			);
 
-	fprintf (file,
-			"%ld, '%s', %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf\n",
-			seed,
-			sun->name,
-			sun->luminosity,
-			sun->mass,
-			sun->life,
-			sun->age,
-			sun->r_ecosphere
-			);
+	fprintf (file, "%ld", seed);
+	csv_quoted(file, sun->name);
+	csv_ld(file, sun->luminosity);
+	csv_ld(file, sun->mass);
+	csv_ld(file, sun->life);
+	csv_ld(file, sun->age);
+	csv_ld(file, sun->r_ecosphere);
+	fputc('\n', file);
 
 	fprintf (file,
 			"'%s', "
@@ -251,201 +421,15 @@ void csv_describe_system(FILE *file, planet_pointer innermost_planet, int do_gas
 		planet != NULL;
 		planet=planet->next_planet, counter++)
 	{
-		char	*ptr = buffer;
-		
-		*buffer = '\0';
-		
-		if (do_gases && (planet->gases > 0))
-		{
-			int	i;
-			
-			for (i = 0; i < planet->gases; i++)
-			{
-				int n;
-				int index = max_gas;
-				int	poisonous = FALSE;
-				
-				for (n = 0; n < max_gas; n++)
-				{
-					if (gases[n].num == planet->atmosphere[i].num)
-						index = n;
-				}
-				
-				if (inspired_partial_pressure (planet->surf_pressure,
-											   planet->atmosphere[i].surf_pressure)
-					> gases[index].max_ipp)
-					poisonous = TRUE;
-				
-				if (((planet->atmosphere[i].surf_pressure
-					 / planet->surf_pressure) > .0005)
-				 || poisonous)
-				{
-					sprintf (ptr, "%s %.1Lf%% %.0Lfmb (ipp:%.0Lf)%s; ",
-									gases[index].symbol,
-									100. * (planet->atmosphere[i].surf_pressure /
-											planet->surf_pressure),
-									planet->atmosphere[i].surf_pressure,
-									inspired_partial_pressure (planet->surf_pressure,
-															   planet->atmosphere[i].surf_pressure),
-									poisonous ? " poisonous" : ""
-							);
-					ptr = buffer + strlen(buffer);
-				}
-			}
-		}
+		csv_write_body_row(file, sun->name, planet, counter, 0, do_gases);
 
-		fprintf (file,
-			"'%s %d', %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, "
-				"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, %5.3Lf, "
-				"%5.3Lf, %5.3Lf, %d, %5.3Lf, %5.3Lf, %5.3Lf, "
-				"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, %5.3Lf, "
-				"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, "
-				"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, "
-				"%5.3Lf, '%s', '%s', %d\n",
-				sun->name, planet->planet_no,
-				planet->a,
-				planet->e,
-				planet->axial_tilt,
-				planet->mass,
-				planet->gas_giant,
-				planet->dust_mass,
-				planet->gas_mass,
-				planet->core_radius,
-				planet->radius,
-				planet->orbit_zone,
-				planet->density,
-				planet->orb_period,
-				planet->day,
-				planet->resonant_period,
-				planet->esc_velocity,
-				planet->surf_accel,
-				planet->surf_grav,
-				planet->rms_velocity,
-				planet->molec_weight,
-				planet->volatile_gas_inventory,
-				planet->surf_pressure,
-				planet->greenhouse_effect,
-				planet->boil_point,
-				planet->albedo,
-				planet->exospheric_temp,
-				planet->estimated_temp,
-				planet->estimated_terr_temp,
-				planet->surf_temp,
-				planet->greenhs_rise,
-				planet->high_temp,
-				planet->low_temp,
-				planet->max_temp,
-				planet->min_temp,
-				planet->hydrosphere,
-				planet->cloud_cover,
-				planet->ice_cover,
-				(do_gases && (planet->gases > 0))
-					? buffer 
-					: "",
-				type_string (planet->type),
-				planet->minor_moons
-			);
-			
 		for (moon = planet->first_moon, moons=1;
 			moon != NULL;
 			moon=moon->next_planet, moons++)
 		{
-			ptr = buffer;
-			
-			*buffer = '\0';
-			
-			if (do_gases && (moon->gases > 0))
-			{
-				int	i;
-				
-				for (i = 0; i < moon->gases; i++)
-				{
-					int n;
-					int index = max_gas;
-					int	poisonous = FALSE;
-					
-					for (n = 0; n < max_gas; n++)
-					{
-						if (gases[n].num == moon->atmosphere[i].num)
-							index = n;
-					}
-					
-					if (inspired_partial_pressure (moon->surf_pressure,
-												   moon->atmosphere[i].surf_pressure)
-						> gases[index].max_ipp)
-						poisonous = TRUE;
-					
-					if (((moon->atmosphere[i].surf_pressure
-						 / moon->surf_pressure) > .0005)
-					 || poisonous)
-					{
-						sprintf (ptr, "%s %.1Lf%% %.0Lfmb (ipp:%.0Lf)%s; ",
-										gases[index].symbol,
-										100. * (moon->atmosphere[i].surf_pressure /
-												moon->surf_pressure),
-										moon->atmosphere[i].surf_pressure,
-										inspired_partial_pressure (moon->surf_pressure,
-																   moon->atmosphere[i].surf_pressure),
-										poisonous ? " poisonous" : ""
-								);
-						ptr = buffer + strlen(buffer);
-					}
-				}
-			}
-	
-			fprintf (file,
-				"'%s %d.%d', %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, "
-					"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, %5.3Lf, "
-					"%5.3Lf, %5.3Lf, %d, %5.3Lf, %5.3Lf, %5.3Lf, "
-					"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %d, %5.3Lf, "
-					"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, "
-					"%5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, %5.3Lf, "
-					"%5.3Lf, '%s', '%s'\n",
-					sun->name, planet->planet_no, moons,
-					moon->a,
-					moon->e,
-					moon->axial_tilt,
-					moon->mass,
-					moon->gas_giant,
-					moon->dust_mass,
-					moon->gas_mass,
-					moon->core_radius,
-					moon->radius,
-					moon->orbit_zone,
-					moon->density,
-					moon->orb_period,
-					moon->day,
-					moon->resonant_period,
-					moon->esc_velocity,
-					moon->surf_accel,
-					moon->surf_grav,
-					moon->rms_velocity,
-					moon->molec_weight,
-					moon->volatile_gas_inventory,
-					moon->surf_pressure,
-					moon->greenhouse_effect,
-					moon->boil_point,
-					moon->albedo,
-					moon->exospheric_temp,
-					moon->estimated_temp,
-					moon->estimated_terr_temp,
-					moon->surf_temp,
-					moon->greenhs_rise,
-					moon->high_temp,
-					moon->low_temp,
-					moon->max_temp,
-					moon->min_temp,
-					moon->hydrosphere,
-					moon->cloud_cover,
-					moon->ice_cover,
-					(do_gases && (moon->gases > 0))
-						? buffer 
-						: "",
-					type_string (moon->type)
-				);
+			csv_write_body_row(file, sun->name, moon, moons, counter, do_gases);
 		}
 	}
-
 }
 
 void csv_thumbnails(FILE*	file, 
@@ -725,9 +709,9 @@ FILE *open_csv_file (char *path,
 					 char *file_name)
 {
 	FILE *file;
-	char file_spec[120];
+	char file_spec[512];
 
-	sprintf (&file_spec[0], "%s%s", path, file_name);
+	snprintf(&file_spec[0], sizeof(file_spec), "%s%s", path, file_name);
 	
 #ifdef macintosh
 		_fcreator ='XCEL';

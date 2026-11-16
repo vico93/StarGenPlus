@@ -23,6 +23,21 @@ add_executable(test_escape test_escape.c)
 target_link_libraries(test_escape PRIVATE stargen_core)
 add_test(NAME escape COMMAND test_escape)
 
+# CSV layout regression: planet and moon rows must match the header
+# width (BUG-05). Runs the CLI in stdout-CSV mode, once plain and once
+# with the Solar System template + moons.
+add_test(NAME csv_columns
+		 COMMAND ${CMAKE_COMMAND}
+				 -Dexe=$<TARGET_FILE:stargen>
+				 -Dargs=-C\ -s42\ -m1\ -n1\ --
+				 -P ${CMAKE_CURRENT_SOURCE_DIR}/csv_columns_check.cmake)
+
+add_test(NAME csv_columns_moons
+		 COMMAND ${CMAKE_COMMAND}
+				 -Dexe=$<TARGET_FILE:stargen>
+				 -Dargs=-C\ -x\ -M\ -g\ -s42\ --
+				 -P ${CMAKE_CURRENT_SOURCE_DIR}/csv_columns_check.cmake)
+
 # MSVC: run-time DLL discovery for test processes. The toolset bin
 # directory holds the AddressSanitizer runtime (clang_rt.asan_dynamic-*.dll,
 # needed when STARGEN_ENABLE_ASAN is on), and the debug CRT redist
