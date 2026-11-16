@@ -407,11 +407,16 @@ void coalesce_planetesimals(long double a, long double e, long double mass, long
 					 && existing_mass < (the_planet->mass * .05)
 					   )
 					{
-						planet_pointer	the_moon = (planets *)malloc(sizeof(planets));
-						
+						/* calloc: every field of a captured moon starts
+						 * with a defined value (see the new-planet case
+						 * below); the explicit sets document which fields
+						 * the capture path relies on before enrichment. */
+						planet_pointer	the_moon = (planets *)calloc(1, sizeof(planets));
+
+						if (the_moon == NULL)
+							return;
+
 						the_moon->type 			= tUnknown;
-	/* 					the_moon->a 			= a; */
-	/* 					the_moon->e 			= e; */
 						the_moon->mass 			= mass;
 						the_moon->dust_mass 	= dust_mass;
 						the_moon->gas_mass 		= gas_mass;
@@ -419,15 +424,6 @@ void coalesce_planetesimals(long double a, long double e, long double mass, long
 						the_moon->next_planet 	= NULL;
 						the_moon->first_moon 	= NULL;
 						the_moon->gas_giant 	= FALSE;
-						the_moon->atmosphere	= NULL;
-						the_moon->albedo		= 0;
-						the_moon->gases			= 0;
-						the_moon->surf_temp		= 0;
-						the_moon->high_temp		= 0;
-						the_moon->low_temp		= 0;
-						the_moon->max_temp		= 0;
-						the_moon->min_temp		= 0;
-						the_moon->greenhs_rise	= 0;
 						the_moon->minor_moons 	= 0;
 	
 						if ((the_moon->dust_mass + the_moon->gas_mass)
@@ -528,8 +524,15 @@ void coalesce_planetesimals(long double a, long double e, long double mass, long
 	
 	if (!(finished))			// Planetesimals didn't collide. Make it a planet.
 	{
-		the_planet = (planets *)malloc(sizeof(planets));
-		
+		/* calloc: every field of a newly accreted body starts with a
+		 * defined value (PLAN.MD Phase B). In particular moon_a/moon_e
+		 * are 0 (no modeled orbit) for any body not explicitly enriched,
+		 * instead of uninitialized heap contents. */
+		the_planet = (planets *)calloc(1, sizeof(planets));
+
+		if (the_planet == NULL)
+			return;
+
 		the_planet->type 			= tUnknown;
 		the_planet->a 				= a;
 		the_planet->e 				= e;
@@ -538,21 +541,8 @@ void coalesce_planetesimals(long double a, long double e, long double mass, long
 		the_planet->gas_mass 		= gas_mass;
 		the_planet->atmosphere 		= NULL;
 		the_planet->first_moon 		= NULL;
-		the_planet->atmosphere		= NULL;
-		the_planet->albedo			= 0;
-		the_planet->gases			= 0;
-		the_planet->surf_temp		= 0;
-		the_planet->high_temp		= 0;
-		the_planet->low_temp		= 0;
-		the_planet->max_temp		= 0;
-		the_planet->min_temp		= 0;
-		the_planet->greenhs_rise	= 0;
+		the_planet->gas_giant 		= (mass >= crit_mass) ? TRUE : FALSE;
 		the_planet->minor_moons 	= 0;
-		
-		if ((mass >= crit_mass))
-			the_planet->gas_giant = TRUE;
-		else 
-			the_planet->gas_giant = FALSE;
 		
 		if ((planet_head == NULL))
 		{
@@ -682,43 +672,54 @@ void free_planet (planet_pointer head)
 {
 	planet_pointer	node;
 	planet_pointer	next;
-	
+
+	/* Recursive: a body's moons (first_moon chain) are singly-owned heap
+	 * nodes that the historical version leaked -- free_planet freed only
+	 * the next_planet chain, so every allocated moon record leaked on
+	 * every generated system with moons (PLAN.MD §4). Moon nodes never
+	 * alias the main chain, so recursive freeing cannot double-free. */
 	for(node = head;
 		node != NULL;
 		node = next)
 	{
 		next = node->next_planet;
 
+		if (node->first_moon != NULL)
+			free_planet (node->first_moon);
+
 		free (node);
 	}
 }
 
-void free_generations()
+void free_generations(void)
 {
 	gen_pointer	node;
 	gen_pointer	next;
-	
+
 	for(node = hist_head;
 		node != NULL;
 		node = next)
 	{
 		next = node->next;
-		
+
 		if (node->dusts)
 			free_dust (node->dusts);
-			
-		if (node->planets)
-			free_planet (node->planets);
+
+		/* node->planets is NOT freed here: since set_initial_conditions()
+		 * is called exactly once per accretion -- always with planet_head
+		 * already NULL from the previous cleanup -- history planet
+		 * snapshots are always NULL, and the live planet chain is owned
+		 * and freed exactly once by the driver (via free_planet() on
+		 * innermost_planet). Freeing it here as well would double-free. */
 
 		free (node);
 	}
-	
+
 	if (dust_head != NULL)
 		free_dust (dust_head);
 
-	if (planet_head != NULL)
-		free_planet (planet_head);
-
+	/* Reset the accretion globals so a subsequent generation starts from
+	 * a clean slate (PLAN.MD §4: "Only some counters reset"). */
 	dust_head = NULL;
 	planet_head = NULL;
 	hist_head = NULL;

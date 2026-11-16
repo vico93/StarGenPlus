@@ -322,7 +322,7 @@ ChemTable    gases[] =
 int max_gas = (sizeof(gases)/sizeof(ChemTable))-1;
 
 void init(void);
-void generate_stellar_system(sun*, int, planet_pointer, char, int, char *, long double, int, int);
+void generate_stellar_system(sun*, int, planet_pointer, char, int, char *, long double, int, int, long double);
 void calculate_gases(sun*, planet_pointer, char*);
 void generate_planet(planet_pointer, int, sun*, int, char*, int, int, int);
 void generate_planets(sun*, int, char, int, char *, int, int);
@@ -345,6 +345,48 @@ void init(void)
 	(void)srand(flag_seed);
 }
 
+/*
+ *	Deep-copy a template planet chain (including its moon chains) so that
+ *	generation can enrich -- and the driver later free -- the copy without
+ *	mutating the static catalog fixtures (PLAN.MD §4: generation modifies
+ *	gas-loss fields and, with moons enabled, moon orbit fields in place).
+ *	Templates carry orbital/physical seed data only: atmosphere arrays are
+ *	recomputed during generation and are never aliased.
+ */
+static planet_pointer clone_planet_chain(planet_pointer src)
+{
+	planet_pointer	head	= NULL;
+	planet_pointer	tail	= NULL;
+	planet_pointer	node;
+
+	for (node = src; node != NULL; node = node->next_planet)
+	{
+		planet_pointer	copy = (planet_pointer) calloc(1, sizeof(planets));
+
+		if (copy == NULL)
+		{
+			free_planet(head);
+			return NULL;
+		}
+
+		*copy = *node;						// all scalar/template fields
+		copy->next_planet	= NULL;
+		copy->first_moon	= clone_planet_chain(node->first_moon);
+		copy->atmosphere	= NULL;			// recomputed during generation
+		copy->gases			= 0;
+		copy->sun			= NULL;			// set by generate_planet()
+
+		if (tail == NULL)
+			head = copy;
+		else
+			tail->next_planet = copy;
+
+		tail = copy;
+	}
+
+	return head;
+}
+
 void generate_stellar_system(sun*			sun,
 							 int 			use_seed_system, 
 							 planet_pointer seed_system,
@@ -353,7 +395,8 @@ void generate_stellar_system(sun*			sun,
 							 char*			system_name,
 							 long double 	outer_planet_limit,
 							 int			do_gases,
-							 int			do_moons)
+							 int			do_moons,
+							 long double	earth_mass_override)
 {
 	long double		outer_dust_limit;
 
@@ -370,8 +413,26 @@ void generate_stellar_system(sun*			sun,
 
 	if (use_seed_system)
 	{
-		innermost_planet = seed_system;
+		innermost_planet = clone_planet_chain(seed_system);
 		sun->age = 5.0E9;
+
+		if ((earth_mass_override > 0.0) && (innermost_planet != NULL))
+		{
+			/* The -a mode varies Earth's mass across systems; the varying
+			 * mass now lives in the clone (planet_no == 3), not in the
+			 * static template fixture. */
+			planet_pointer	p;
+
+			for (p = innermost_planet; p != NULL; p = p->next_planet)
+			{
+				if (p->planet_no == 3)
+				{
+					p->mass		= earth_mass_override;
+					p->dust_mass	= earth_mass_override;	// Earth is rocky
+					break;
+				}
+			}
+		}
 	}
 	else
 	{
@@ -1241,6 +1302,33 @@ static int diminishing_pressure(const void *xp, const void *yp)
 	return (x->surf_pressure > y->surf_pressure ? -1 : 0);
 }
 
+/*
+ *	Reset the process-global run statistics so a stargen() call starts
+ *	from a clean slate instead of inheriting extrema from earlier calls
+ *	(PLAN.MD §4: "Only some counters reset. Totals/extrema can persist
+ *	across calls."). Values mirror the historical static initializers.
+ */
+static void reset_run_statistics(void)
+{
+	total_earthlike				 = 0;
+	total_habitable				 = 0;
+	habitable_jovians			 = 0;
+	max_type_count				 = 0;
+	max_moon_mass				 = 0.0;
+	min_breathable_terrestrial_g = 1000.0;
+	min_breathable_g			 = 1000.0;
+	max_breathable_terrestrial_g = 0.0;
+	max_breathable_g			 = 0.0;
+	min_breathable_temp			 = 1000.0;
+	max_breathable_temp			 = 0.0;
+	min_breathable_p			 = 100000.0;
+	max_breathable_p			 = 0.0;
+	min_breathable_terrestrial_l = 1000.0;
+	min_breathable_l			 = 1000.0;
+	max_breathable_terrestrial_l = 0.0;
+	max_breathable_l			 = 0.0;
+}
+
 int stargen (actions		action,
 			 char			flag_char,
 			 char *			path,
@@ -1269,6 +1357,8 @@ int stargen (actions		action,
 	long double		min_mass 			= 0.4;
 	long double		inc_mass 			= 0.05;
 	long double		max_mass 			= 2.35;
+	long double		earth_mass			= 0.0;		// -a mode's varying Earth mass
+	long double		saved_dust_coeff	= dust_density_coeff;
 	int				system_count		= 1;
 	int				seed_increment		= 1;
 	
@@ -1476,9 +1566,9 @@ int stargen (actions		action,
 	if (reuse_solar_system)
 	{
 		system_count = 1 + (int) ((max_mass - min_mass) / inc_mass);
-		
-		earth.mass = (EM(min_mass));
-		
+
+		earth_mass = EM(min_mass);
+
 		sun.luminosity 	= 1.0;
 		sun.mass 		= 1.0;
 		sun.life 		= 1.0E10;
@@ -1593,6 +1683,8 @@ int stargen (actions		action,
 			csv_thumbnails(thumbnails, url_path, subdir, csv_file_name, csv_url);
 	}
 	
+	reset_run_statistics();
+
 	for (index = 0; index < system_count; index++)
 	{	
 		char			system_name[80];
@@ -1674,9 +1766,9 @@ int stargen (actions		action,
 		}
 		else if (reuse_solar_system)
 		{
-			snprintf (&system_name[0], sizeof(system_name), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
-			snprintf (&designation[0], sizeof(designation), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
-			snprintf (&file_name[0], sizeof(file_name), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&system_name[0], sizeof(system_name), "Earth-M%LG", earth_mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&designation[0], sizeof(designation), "Earth-M%LG", earth_mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&file_name[0], sizeof(file_name), "Earth-M%LG", earth_mass * SUN_MASS_IN_EARTH_MASSES);
 
 			outer_limit = 0.0;
 		}
@@ -1755,7 +1847,23 @@ int stargen (actions		action,
 								system_name,
 								outer_limit,
 								do_gases,
-								do_moons);
+								do_moons,
+								reuse_solar_system ? earth_mass : 0.0);
+
+		if (innermost_planet == NULL)
+		{
+			fprintf (sgErr, "Out of memory while generating a system.\n");
+			dust_density_coeff = saved_dust_coeff;
+			if ((thumbnails != NULL) && (thumbnails != sgOut))
+				close_html_file (thumbnails);
+			if ((csv_file != NULL) && (csv_file != sgOut))
+			{
+				fflush (csv_file);
+				fclose (csv_file);
+			}
+			free_generations ();
+			return 1;
+		}
 
 		{
 			planet_pointer	planet;
@@ -1938,11 +2046,18 @@ int stargen (actions		action,
 			flag_seed += seed_increment;
 			
 		if (reuse_solar_system)
-			earth.mass += (EM(inc_mass));
-		
+			earth_mass += (EM(inc_mass));
+
 		free_atmosphere (innermost_planet);
-		
-		// Free the dust and planets created by accrete:
+
+		/* Free the generated bodies exactly once: the chain hangs off
+		 * innermost_planet and is either the accretion result or a clone
+		 * of a template. free_planet() also frees moon records (the
+		 * historical version leaked every allocated moon). */
+		free_planet (innermost_planet);
+		innermost_planet = NULL;
+
+		// Free the dust and generation history created by accrete:
 		free_generations ();
 
 #if MEMORY_CHECK
@@ -1989,6 +2104,10 @@ int stargen (actions		action,
 		fflush (csv_file);
 		fclose (csv_file);
 	}
+
+	/* Undo the experimental dust-density ratio so process-global state
+	 * does not compound across stargen() calls (PLAN.MD §4). */
+	dust_density_coeff = saved_dust_coeff;
 
 	return(0);
 }
