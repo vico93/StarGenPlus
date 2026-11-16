@@ -12,6 +12,16 @@
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Debug;Release"
       }
+    },
+    {
+      "name": "msvc2026-asan",
+      "displayName": "Configure (MSVC 2026 x64, AddressSanitizer)",
+      "description": "Debug configuration with /fsanitize=address and the static CRT (ASan runtime linked statically). Uses its own build directory.",
+      "inherits": "msvc2026",
+      "binaryDir": "${sourceDir}/build/msvc2026-x64-asan",
+      "cacheVariables": {
+        "STARGEN_ENABLE_ASAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -26,9 +36,22 @@
       "displayName": "Build (MSVC 2026 x64 Release)",
       "configurePreset": "msvc2026",
       "configuration": "Release"
+    },
+    {
+      "name": "msvc2026-asan-debug",
+      "displayName": "Build (MSVC 2026 x64 Debug + ASan)",
+      "configurePreset": "msvc2026-asan",
+      "configuration": "Debug"
     }
   ],
   "testPresets": [
+    {
+      "name": "msvc2026-asan-test",
+      "displayName": "Test (MSVC 2026 x64 Debug + ASan)",
+      "configurePreset": "msvc2026-asan",
+      "configuration": "Debug",
+      "output": { "outputOnFailure": true }
+    },
     {
       "name": "msvc2026-test-debug",
       "displayName": "Test (MSVC 2026 x64 Debug)",

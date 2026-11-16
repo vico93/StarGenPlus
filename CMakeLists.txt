@@ -57,12 +57,35 @@ target_link_libraries(stargen PRIVATE stargen_core)
 set_target_properties(stargen PROPERTIES OUTPUT_NAME StarGen)
 
 # ----------------------------------------------------------------------------
-# Warnings
+# Warnings: strict. /WX once the compatibility cleanup is complete
+# (PLAN.MD §6) -- Phase B requires project-owned code to be warning-clean.
 # ----------------------------------------------------------------------------
 if(MSVC)
-	add_compile_options(/W4)
+	add_compile_options(/W4 /WX)
 else()
-	add_compile_options(-Wall -Wextra)
+	add_compile_options(-Wall -Wextra -Werror)
+endif()
+
+# ----------------------------------------------------------------------------
+# AddressSanitizer (opt-in)
+# ----------------------------------------------------------------------------
+option(STARGEN_ENABLE_ASAN
+	   "Enable AddressSanitizer (MSVC /fsanitize=address or -fsanitize=address)"
+	   OFF)
+
+if(STARGEN_ENABLE_ASAN)
+	if(MSVC)
+		# MSVC's ASan requires the DYNAMIC CRT (the compiler emits import
+		# thunks __imp_* for intercepted CRT functions), so the runtime
+		# policy stays at its default here. The ASan runtime DLL
+		# (clang_rt.asan_dynamic-x86_64.dll) is not on the system PATH;
+		# tests/CMakeLists.txt adds the toolset bin directory to the test
+		# processes' PATH so the loader finds it.
+		add_compile_options($<$<CONFIG:Debug>:/fsanitize=address>)
+	else()
+		add_compile_options($<$<CONFIG:Debug>:-fsanitize=address>)
+		add_link_options($<$<CONFIG:Debug>:-fsanitize=address>)
+	endif()
 endif()
 
 # ----------------------------------------------------------------------------
