@@ -104,9 +104,14 @@ int max_type_count = 0;
 #define EM(x)		(x)/SUN_MASS_IN_EARTH_MASSES
 #define AVE(x,y)	((x+y)/2.)
 
-			/*	   No Orbit   Eccen. Tilt Mass    Gas Giant? Dust Mass   Gas */
+/*										No Orbit   Eccen. Tilt Mass    Gas Giant? Dust Mass   Gas */
 planets luna     ={1,2.571e-3,0.055,1.53, EM(.01229), FALSE, EM(.01229), 0, ZEROES,0,NULL, NULL};
-planets callisto ={4,1.259e-2,0    ,0   , EM(1.62e-2),FALSE,EM(1.62-2 ), 0, ZEROES,0,NULL, NULL};
+/* BUG-04 fix (PLAN.MD): the dust mass initializer read EM(1.62-2), which
+ * evaluates 1.62 minus 2 = -0.38 Earth masses instead of the intended
+ * EM(1.62e-2) = 0.0162 Earth masses. The negative value reached
+ * kothari_radius() (fractional powers of a negative mass) and produced
+ * NaNs in core_radius. See tests/test_fixtures.c. */
+planets callisto ={4,1.259e-2,0    ,0   , EM(1.62e-2),FALSE,EM(1.62e-2), 0, ZEROES,0,NULL, NULL};
 planets ganymede ={3,7.16e-3,0.0796,0   , EM(2.6e-2 ),FALSE,EM(2.6e-2 ), 0, ZEROES,0,NULL, &callisto};
 planets europa   ={2,4.49e-3,0.0075,0   , EM(7.9e-3 ),FALSE,EM(7.9e-3 ), 0, ZEROES,0,NULL, &ganymede};
 planets io       ={1,2.82e-3,0.0006,0   , EM(1.21e-2),FALSE,EM(1.21e-2), 0, ZEROES,0,NULL, &europa};
@@ -557,6 +562,33 @@ void generate_planet(planet_pointer	planet,
 					 int			do_moons,
 					 int			is_moon)
 {
+		/* Defensive validation (PLAN.MD Phase B): component masses must be
+		 * nonnegative before domain-sensitive math -- kothari_radius() takes
+		 * fractional powers of mass, so a negative input yields NaNs that
+		 * leak into computed properties and exports. Legitimate zero-mass
+		 * accretion seeds never reach this point with negative components;
+		 * a negative value indicates a defect (this guard exists because of
+		 * the Callisto fixture's EM(1.62-2) typo, fixed separately). */
+		if ((planet->mass < 0.0)
+		 || (planet->dust_mass < 0.0)
+		 || (planet->gas_mass < 0.0))
+		{
+			fprintf (stderr,
+					 "%s\tWARNING: negative component mass(es)"
+					 " (m=%Lg, dust=%Lg, gas=%Lg EM); clamping to zero\n",
+					 planet_id,
+					 planet->mass * SUN_MASS_IN_EARTH_MASSES,
+					 planet->dust_mass * SUN_MASS_IN_EARTH_MASSES,
+					 planet->gas_mass * SUN_MASS_IN_EARTH_MASSES);
+
+			if (planet->mass < 0.0)
+				planet->mass = 0.0;
+			if (planet->dust_mass < 0.0)
+				planet->dust_mass = 0.0;
+			if (planet->gas_mass < 0.0)
+				planet->gas_mass = 0.0;
+		}
+
 		planet->atmosphere		= NULL;
 		planet->gases			= 0;
 		planet->surf_temp		= 0;
