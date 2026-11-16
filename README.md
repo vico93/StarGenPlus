@@ -1,6 +1,8 @@
-# StarGenPlus
+# StarGen Plus
 
-A modernized fork of **StarGen**, Jim Burrows' (Brons / Eldacur
+*PS.: Made with help of AI (currently [GLM 5.3 Flash](https://z.ai/blog/glm-5.3-flash) via [OpenCode](https://opencode.ai/)). If you didn't agree with AI, please look away from the bugs... 😉*
+
+A modernized fork of **[StarGen](https://www.eldacur.com/~brons/NerdCorner/StarGen/StarGen.html)**, Jim Burrows' (Brons / Eldacur
 Technologies) classic random planetary-system generator — accretion model
 in the Dole/Fogg lineage, C17, building with Visual Studio 2026 and
 GCC/Clang, plus a headless JSON mode and a dual-era **MCP stdio server**
