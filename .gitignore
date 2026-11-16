@@ -1,0 +1,18 @@
+# Build trees
+build/
+out/
+.vs/
+
+# Compiler / linker artifacts
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+
+# Built executables are never committed
+*.exe
+
+# Test scratch space
+tests/tmp/
