@@ -2021,7 +2021,7 @@ int stargen (actions		action,
 				break;
 				
 				case ffTEXT:
-					text_describe_system(innermost_planet, do_gases, flag_seed);
+					text_describe_system(innermost_planet, do_gases, do_moons, flag_seed);
 				break;
 				
 				case ffCSV:

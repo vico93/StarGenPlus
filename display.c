@@ -26,6 +26,7 @@
 #include	"sg_numfmt.h"
 #include	"sg_value_status.h"
 #include	"sg_escape.h"
+#include	"sg_units.h"
 
 #define	MAX_EXP_DIGS	3
 #define	MAX_MAN_DIGS	20
@@ -87,12 +88,112 @@ char *engineer_notation(long double d,
 	return (output);
 }
 
-void text_describe_system(planet_pointer innermost_planet, int do_gases, long int seed)
+/*
+ *	Human-facing Earth-mass rendering that never shows a finite nonzero
+ *	tiny mass as literal zero (PLAN.MD BUG-01/BUG-02).
+ */
+static const char *text_em(char *buf, size_t size,
+						   long double solar_mass, int decimals)
+{
+	return sg_fmt_human(buf, size,
+						solar_mass * SUN_MASS_IN_EARTH_MASSES, decimals);
+}
+
+static void text_atmosphere_section(planet_pointer planet)
+{
+	printf("   Atmosphere:\n");
+
+	if ((planet->gases > 0) && (planet->atmosphere != NULL))
+	{
+		int	i;
+
+		for (i = 0; i < planet->gases; i++)
+		{
+			int		n;
+			int		index = max_gas;
+			int		poisonous = FALSE;
+
+			for (n = 0; n < max_gas; n++)
+			{
+				if (gases[n].num == planet->atmosphere[i].num)
+					index = n;
+			}
+
+			if (inspired_partial_pressure(planet->surf_pressure,
+										  planet->atmosphere[i].surf_pressure)
+				> gases[index].max_ipp)
+				poisonous = TRUE;
+
+			printf("      %-13s %6.2Lf%% %8.2Lf mb (ipp %8.2Lf mb)%s\n",
+					gases[index].name,
+					100.0 * (planet->atmosphere[i].surf_pressure /
+							 planet->surf_pressure),
+					planet->atmosphere[i].surf_pressure,
+					inspired_partial_pressure(planet->surf_pressure,
+											  planet->atmosphere[i].surf_pressure),
+					poisonous ? "  poisonous at this pressure" : "");
+		}
+
+		printf("   Breathability: %s\n",
+				breathability_phrase[breathability(planet)]);
+	}
+	else if (planet->surf_pressure <= 0.0)
+	{
+		printf("      (none; surface pressure is zero)\n");
+	}
+	else
+	{
+		/* Pressure exists but no constituent data was computed/retained
+		 * (gating options or the sub-sub-giant reclassification). */
+		printf("      (not computed)\n");
+	}
+}
+
+static void text_moon_sections(planet_pointer planet, int counter)
+{
+	planet_pointer	moon;
+	int				moons;
+
+	for (moon = planet->first_moon, moons = 1;
+		 moon != NULL;
+		 moon = moon->next_planet, moons++)
+	{
+		char	em_buf[32];
+		char	r_buf[32];
+		char	g_buf[32];
+		char	t_buf[32];
+
+		printf("   Moon %d.%d: %s, %s EM, %s Km, %s g, %s C\n",
+				counter, moons,
+				type_string(moon->type),
+				text_em(em_buf, sizeof(em_buf), moon->mass, 3),
+				sg_fmt_human(r_buf, sizeof(r_buf), moon->radius, 1),
+				sg_fmt_human(g_buf, sizeof(g_buf), moon->surf_grav, 2),
+				sg_fmt_human(t_buf, sizeof(t_buf),
+							 moon->surf_temp - FREEZING_POINT_OF_WATER, 1));
+
+		if (sg_num_available(moon->moon_a) && (moon->moon_a > 0.0))
+		{
+			printf("      orbit a=%.0Lf Km e=%.3Lf\n",
+					moon->moon_a * KM_PER_AU, moon->moon_e);
+		}
+		else
+		{
+			printf("      (no permitted modeled orbit)\n");
+		}
+
+		if (moon->gases > 0)
+			text_atmosphere_section(moon);
+	}
+}
+
+void text_describe_system(planet_pointer innermost_planet, int do_gases, int do_moons, long int seed)
 {
 	planet_pointer 	planet;
 	sun*			sun = innermost_planet->sun;
-	int 			counter; 
-	
+	int 			counter;
+	char			buf[32];
+
 	printf("Stargen - V%s; seed=%ld\n", stargen_revision, seed);
 	printf("                          SYSTEM  CHARACTERISTICS\n");
 	printf("Stellar mass: %4.2Lf solar masses\n", sun->mass);
@@ -106,8 +207,9 @@ void text_describe_system(planet_pointer innermost_planet, int do_gases, long in
 		planet != NULL;
 		planet=planet->next_planet, counter++)
 	{
-	   printf("%d\t%7.3Lf AU\t%8.3Lf EM\t%c\n", 
-			  counter, planet->a,planet->mass * SUN_MASS_IN_EARTH_MASSES,
+	   printf("%d\t%7.3Lf AU\t%8s EM\t%c\n",
+			  counter, planet->a,
+			  text_em(buf, sizeof(buf), planet->mass, 3),
 			  planet->gas_giant ? 'O' :
 			  ((planet->greenhouse_effect) && (planet->surf_pressure > 0.0)) ? '+' :
 			  ((planet->hydrosphere > .05) && (planet->hydrosphere < .95)) ? '*' :
@@ -127,14 +229,19 @@ void text_describe_system(planet_pointer innermost_planet, int do_gases, long in
 		if (planet->resonant_period)
 			printf("Planet's rotation is in a resonant spin lock with the star\n");
 		printf("   Distance from primary star:\t%5.3Lf\tAU\n",planet->a);
-		printf("   Mass:\t\t\t%5.3Lf\tEarth masses\n",planet->mass * SUN_MASS_IN_EARTH_MASSES);
+		printf("   Mass:\t\t\t%8s\tEarth masses\n",
+				text_em(buf, sizeof(buf), planet->mass, 3));
 		if (!(planet->gas_giant))
 		{
+			/* BUG-03: one standard atmosphere is 1013.25 mbar, not 1000.
+			 * (The historical text divided by 1000, printing bars but
+			 * labeling them "Earth atmospheres".) */
 			printf("   Surface gravity:\t\t%4.2Lf\tEarth gees\n",planet->surf_grav);
-			printf("   Surface pressure:\t\t%5.3Lf\tEarth atmospheres",(planet->surf_pressure / 1000.0));
+			printf("   Surface pressure:\t\t%5.3Lf\tEarth atmospheres",
+					sg_mbar_to_atm(planet->surf_pressure));
 			if ((planet->greenhouse_effect) && (planet->surf_pressure > 0.0))
 				printf("\tGREENHOUSE EFFECT\n");
-			else 
+			else
 				printf("\n");
 			printf("   Surface temperature:\t\t%4.2Lf\tdegrees Celcius\n",
 					(planet->surf_temp - FREEZING_POINT_OF_WATER));
@@ -148,7 +255,12 @@ void text_describe_system(planet_pointer innermost_planet, int do_gases, long in
 		printf("   Axial tilt:\t\t\t%2.0Lf\tdegrees\n",planet->axial_tilt);
 		printf("   Planetary albedo:\t\t%5.3Lf\n",planet->albedo);
 		printf("   Length of year:\t\t%4.2Lf\tdays\n",planet->orb_period);
-		printf("   Length of day:\t\t%4.2Lf\thours\n",planet->day);
+
+		if (sg_num_available(planet->day))
+			printf("   Length of day:\t\t%4.2Lf\thours\n",planet->day);
+		else
+			printf("   Length of day:\t\tN/A\t(rotation stopped)\n");
+
 		if (!(planet->gas_giant))
 		{
 			printf("   Boiling point of water:\t%3.1Lf\tdegrees Celcius\n",(planet->boil_point - FREEZING_POINT_OF_WATER));
@@ -156,14 +268,24 @@ void text_describe_system(planet_pointer innermost_planet, int do_gases, long in
 			printf("   Cloud cover percentage:\t%4.2Lf\n",(planet->cloud_cover * 100));
 			printf("   Ice cover percentage:\t%4.2Lf\n",(planet->ice_cover * 100));
 		}
-		printf("\n\n");
+		printf("\n");
 
+		/* BUG-05: the '-g' switch now produces real gas data instead of
+		 * the historical empty "//gases?" placeholder. */
 		if (do_gases
-		 && (planet->type != tGasGiant) 
-		 && (planet->type != tSubGasGiant) 
+		 && (planet->type != tGasGiant)
+		 && (planet->type != tSubGasGiant)
 		 && (planet->type != tSubSubGasGiant))
 		{
-			//gases?
+			text_atmosphere_section(planet);
+			printf("\n");
+		}
+
+		/* BUG-05: '-M' now produces moon detail in the text report. */
+		if (do_moons && (planet->first_moon != NULL))
+		{
+			text_moon_sections(planet, counter);
+			printf("\n");
 		}
 	}
 }
