@@ -4,7 +4,7 @@
 
 #define JSMN_STATIC
 #define JSMN_STRICT
-#include "third_party/jsmn/jsmn.h"
+#include "jsmn.h"
 
 #include "sg_json_dom.h"
 #include "sg_jsonw.h"

@@ -1,16 +1,25 @@
 # ============================================================================
 # StarGen -- a random solar-system generator
 #
-# Modernized build (PLAN.MD Phase A) for the StarGenPlus fork:
+# Modernized build for the StarGenPlus fork:
 #   * stargen_core  -- static library holding the simulation
-#                      (display.c is still part of it: the legacy
-#                       orchestration in stargen.c calls it directly;
-#                       it will be separated as exporters are refactored)
+#                      (src/export/display.c is still part of it: the
+#                       legacy orchestration in stargen.c calls it
+#                       directly; it will be separated as exporters are
+#                       refactored)
 #   * stargen       -- the CLI executable (StarGen.exe on Windows)
-#   * tests/        -- CTest-driven checks (grows from Phase B on)
+#   * tests/        -- CTest-driven checks
 #
-# Language: C17, extensions off. Warnings are strict but not yet
-# errors-as-warnings: the codebase is still being modernized (Phase B).
+# Source layout (all quote-includes stay unqualified; every subfolder is
+# on the target's include path):
+#     src/engine/  simulation core (accretion, environment, fixtures)
+#     src/export/  output formats (text/CSV/HTML/SSC/SVG, JSON export)
+#     src/mcp/     MCP stdio server + worker subprocess plumbing
+#     src/app/     CLI entry point + headless one-job driver
+#     third_party/jsmn/  vendored MIT JSON tokenizer (include dir)
+#
+# Language: C17, extensions off. Warnings are errors-as-warnings:
+# project-owned code is required to be warning-clean.
 # No global CRT-suppression defines are set on purpose.
 #
 # Configure (from any shell, using the CMake bundled with VS 2026
@@ -31,27 +40,40 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "Build configuration" FORCE)
 endif()
 
+set(SG_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # ----------------------------------------------------------------------------
 # Simulation core
 # ----------------------------------------------------------------------------
 add_library(stargen_core STATIC
-	accrete.c
-	display.c
-	Dumas.c
-	enviro.c
-	sg_escape.c
-	sg_export.c
-	sg_headless.c
-	sg_json_dom.c
-	sg_jsonw.c
-	sg_mcp.c
-	sg_numfmt.c
-	sg_value_status.c
-	sg_worker.c
-	stargen.c
-	utils.c
+	${SG_SRC_DIR}/engine/accrete.c
+	${SG_SRC_DIR}/export/display.c
+	${SG_SRC_DIR}/engine/Dumas.c
+	${SG_SRC_DIR}/engine/enviro.c
+	${SG_SRC_DIR}/export/sg_escape.c
+	${SG_SRC_DIR}/export/sg_export.c
+	${SG_SRC_DIR}/app/sg_headless.c
+	${SG_SRC_DIR}/mcp/sg_json_dom.c
+	${SG_SRC_DIR}/export/sg_jsonw.c
+	${SG_SRC_DIR}/mcp/sg_mcp.c
+	${SG_SRC_DIR}/export/sg_numfmt.c
+	${SG_SRC_DIR}/export/sg_value_status.c
+	${SG_SRC_DIR}/mcp/sg_worker.c
+	${SG_SRC_DIR}/engine/stargen.c
+	${SG_SRC_DIR}/engine/utils.c
 )
-target_include_directories(stargen_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_include_directories(stargen_core PUBLIC
+	${SG_SRC_DIR}/engine
+	${SG_SRC_DIR}/export
+	${SG_SRC_DIR}/mcp
+	${SG_SRC_DIR}/app
+)
+
+# jsmn is header-only and compiled into sg_json_dom.c (JSMN_STATIC).
+target_include_directories(stargen_core PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/third_party/jsmn
+)
 
 # Some platforms require an explicit libm; MSVC does not.
 if(UNIX)
@@ -61,13 +83,12 @@ endif()
 # ----------------------------------------------------------------------------
 # Command-line interface
 # ----------------------------------------------------------------------------
-add_executable(stargen main.c)
+add_executable(stargen ${SG_SRC_DIR}/app/main.c)
 target_link_libraries(stargen PRIVATE stargen_core)
 set_target_properties(stargen PROPERTIES OUTPUT_NAME StarGen)
 
 # ----------------------------------------------------------------------------
-# Warnings: strict. /WX once the compatibility cleanup is complete
-# (PLAN.MD §6) -- Phase B requires project-owned code to be warning-clean.
+# Warnings
 # ----------------------------------------------------------------------------
 if(MSVC)
 	add_compile_options(/W4 /WX)

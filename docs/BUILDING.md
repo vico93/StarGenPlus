@@ -1,5 +1,22 @@
 # Building StarGenPlus
 
+## Source layout
+
+```text
+src/engine/   simulation core (accretion, environment, fixtures)
+src/export/   output formats (text/CSV/HTML/SSC/SVG, JSON export)
+src/mcp/      MCP stdio server + worker subprocess plumbing
+src/app/      CLI entry point + headless one-job driver
+tests/        CTest suite + recorded baseline fixtures
+third_party/  vendored third-party code (jsmn)
+legacy/       frozen VS6/CodeWarrior-era build artifacts (not built)
+```
+
+All subfolders of `src/` are on the target's include path, so
+quote-includes remain unqualified (`#include "structs.h"` from any
+module). Historical source references in [PLAN.MD](../PLAN.MD)
+(`stargen.c:NN` etc.) describe the pre-reorganization root layout.
+
 ## Requirements
 
 - Visual Studio 2026 Build Tools (Dev 18) with the C++ toolset

@@ -35,6 +35,11 @@ Date: 2026-11-15
 > 4. **Not done (by scope agreement):** licensing investigation; no
 >    publishing/installing; no changes to the original
 >    `D:\Apps\WinStarGen` installation.
+> 5. **Repository reorganization (2026-11-16):** sources moved to a
+>    grouped `src/{engine,export,mcp,app}` layout and the frozen
+>    VS6/CW-era build files to `legacy/`; source-file references in the
+>    body below (e.g. `stargen.c:113`) describe the pre-reorganization
+>    root layout and remain valid via `git log --follow`.
 
 ## 1. Owner's request and chosen approach
 
