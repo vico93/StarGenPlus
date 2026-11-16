@@ -16,6 +16,14 @@ static void sg_json_sep(sg_json_writer *w)
 {
 	if (w->depth > 0)
 	{
+		if (w->pending_key)
+		{
+			/* A key was just emitted; its value follows without a
+			 * separator (the member separator was handled by the key). */
+			w->pending_key = 0;
+			return;
+		}
+
 		if (w->need_comma[w->depth - 1])
 			sg_json_raw(w, ",");
 		else
@@ -25,9 +33,17 @@ static void sg_json_sep(sg_json_writer *w)
 
 static void sg_json_key(sg_json_writer *w, const char *key)
 {
-	sg_json_sep(w);
+	if (w->depth > 0)
+	{
+		if (w->need_comma[w->depth - 1])
+			sg_json_raw(w, ",");
+		else
+			w->need_comma[w->depth - 1] = 1;
+	}
+
 	sg_json_quoted_string(w, key);
 	sg_json_raw(w, ":");
+	w->pending_key = 1;
 }
 
 void sg_json_quoted_string(sg_json_writer *w, const char *s)
@@ -75,6 +91,7 @@ void sg_json_begin(sg_json_writer *w, FILE *out)
 	w->out = out;
 	w->depth = 0;
 	w->error = 0;
+	w->pending_key = 0;
 	memset(w->need_comma, 0, sizeof(w->need_comma));
 }
 
@@ -99,6 +116,8 @@ void sg_json_object_begin(sg_json_writer *w, const char *key)
 	}
 	else
 		w->error = 1;			/* document too deeply nested		*/
+
+	w->pending_key = 0;			/* the keyed value has started		*/
 }
 
 void sg_json_object_end(sg_json_writer *w)
@@ -110,6 +129,8 @@ void sg_json_object_end(sg_json_writer *w)
 	}
 	else
 		w->error = 1;
+
+	w->pending_key = 0;
 }
 
 void sg_json_array_begin(sg_json_writer *w, const char *key)
@@ -128,6 +149,8 @@ void sg_json_array_begin(sg_json_writer *w, const char *key)
 	}
 	else
 		w->error = 1;
+
+	w->pending_key = 0;
 }
 
 void sg_json_array_end(sg_json_writer *w)
@@ -139,12 +162,15 @@ void sg_json_array_end(sg_json_writer *w)
 	}
 	else
 		w->error = 1;
+
+	w->pending_key = 0;
 }
 
 void sg_json_string(sg_json_writer *w, const char *key, const char *value)
 {
 	sg_json_key(w, key);
 	sg_json_quoted_string(w, value);
+	w->pending_key = 0;
 }
 
 void sg_json_int(sg_json_writer *w, const char *key, int value)
@@ -154,6 +180,7 @@ void sg_json_int(sg_json_writer *w, const char *key, int value)
 	sg_json_key(w, key);
 	snprintf(buf, sizeof(buf), "%d", value);
 	sg_json_raw(w, buf);
+	w->pending_key = 0;
 }
 
 void sg_json_long(sg_json_writer *w, const char *key, long value)
@@ -163,18 +190,21 @@ void sg_json_long(sg_json_writer *w, const char *key, long value)
 	sg_json_key(w, key);
 	snprintf(buf, sizeof(buf), "%ld", value);
 	sg_json_raw(w, buf);
+	w->pending_key = 0;
 }
 
 void sg_json_bool(sg_json_writer *w, const char *key, int value)
 {
 	sg_json_key(w, key);
 	sg_json_raw(w, value ? "true" : "false");
+	w->pending_key = 0;
 }
 
 void sg_json_null(sg_json_writer *w, const char *key)
 {
 	sg_json_key(w, key);
 	sg_json_raw(w, "null");
+	w->pending_key = 0;
 }
 
 void sg_json_number(sg_json_writer *w, const char *key, long double value)
@@ -183,6 +213,7 @@ void sg_json_number(sg_json_writer *w, const char *key, long double value)
 
 	sg_json_key(w, key);
 	sg_json_raw(w, sg_fmt_machine(value, buf, sizeof(buf)));
+	w->pending_key = 0;
 }
 
 void sg_json_number_or_null(sg_json_writer *w, const char *key,
@@ -192,4 +223,32 @@ void sg_json_number_or_null(sg_json_writer *w, const char *key,
 		sg_json_number(w, key, value);
 	else
 		sg_json_null(w, key);
+}
+
+void sg_json_raw_token(sg_json_writer *w, const char *raw)
+{
+	sg_json_raw(w, raw);
+}
+
+void sg_json_raw_null(sg_json_writer *w)
+{
+	sg_json_raw(w, "null");
+}
+
+void sg_json_sep_raw(sg_json_writer *w)
+{
+	sg_json_sep(w);
+}
+
+void sg_json_key_raw(sg_json_writer *w, const char *key)
+{
+	sg_json_key(w, key);
+}
+
+/* Emit "key":<raw token> with full separator bookkeeping. */
+void sg_json_raw_member(sg_json_writer *w, const char *key, const char *raw_value)
+{
+	sg_json_key(w, key);
+	sg_json_raw(w, raw_value);
+	w->pending_key = 0;
 }

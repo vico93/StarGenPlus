@@ -23,6 +23,10 @@ add_executable(test_escape test_escape.c)
 target_link_libraries(test_escape PRIVATE stargen_core)
 add_test(NAME escape COMMAND test_escape)
 
+add_executable(test_json_roundtrip test_json_roundtrip.c)
+target_link_libraries(test_json_roundtrip PRIVATE stargen_core)
+add_test(NAME json_roundtrip COMMAND test_json_roundtrip)
+
 # CSV layout regression: planet and moon rows must match the header
 # width (BUG-05). Runs the CLI in stdout-CSV mode, once plain and once
 # with the Solar System template + moons.

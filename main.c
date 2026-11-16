@@ -39,6 +39,7 @@
 #include	"structs.h"
 #include	"stargen.h"
 #include	"sg_headless.h"
+#include	"sg_mcp.h"
 
 /*
  *		StarGen supports private catalogs. The two here are ones I am using
@@ -185,7 +186,12 @@ int main (int argc, char *argv[])
 			command = sg_cmd_mcp;
 
 		if (command != sg_cmd_none)
+		{
+			if (command == sg_cmd_mcp)
+				return sg_mcp_server_run(stdin, stdout, stderr);
+
 			return sg_headless_main(argc, argv, command);
+		}
 	}
 
 	if (argc <= 1)

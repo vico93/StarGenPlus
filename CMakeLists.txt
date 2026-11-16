@@ -42,9 +42,12 @@ add_library(stargen_core STATIC
 	sg_escape.c
 	sg_export.c
 	sg_headless.c
+	sg_json_dom.c
 	sg_jsonw.c
+	sg_mcp.c
 	sg_numfmt.c
 	sg_value_status.c
+	sg_worker.c
 	stargen.c
 	utils.c
 )

@@ -26,7 +26,8 @@ typedef struct sg_json_writer {
 	FILE	*out;
 	int		depth;
 	int		need_comma[16];		/* per-scope pending separator		*/
-	int		error;				/* sticky write/encode failure		*/
+	int		pending_key;		/* a key was just emitted: the value	*/
+	int		error;				/* follows without a separator			*/
 } sg_json_writer;
 
 void sg_json_begin(sg_json_writer *w, FILE *out);
@@ -40,6 +41,13 @@ void sg_json_array_end(sg_json_writer *w);
 void sg_json_string(sg_json_writer *w, const char *key, const char *value);
 void sg_json_quoted_string(sg_json_writer *w, const char *s);	/* raw, no key */
 void sg_json_int(sg_json_writer *w, const char *key, int value);
+
+/* Low-level pieces used by the JSON DOM re-emitter. */
+void sg_json_raw_token(sg_json_writer *w, const char *raw);
+void sg_json_raw_null(sg_json_writer *w);
+void sg_json_sep_raw(sg_json_writer *w);
+void sg_json_key_raw(sg_json_writer *w, const char *key);
+void sg_json_raw_member(sg_json_writer *w, const char *key, const char *raw_value);
 void sg_json_long(sg_json_writer *w, const char *key, long value);
 void sg_json_bool(sg_json_writer *w, const char *key, int value);
 void sg_json_null(sg_json_writer *w, const char *key);
