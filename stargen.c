@@ -1387,6 +1387,7 @@ int stargen (actions		action,
 	int				only_multi_habitable= (flags_arg & fOnlyMultiHabitable) != 0;
 	int				only_jovian_habitable=(flags_arg & fOnlyJovianHabitable) != 0;
 	int				only_earthlike		= (flags_arg & fOnlyEarthlike) != 0;
+	int				status				= 0;
 
 	if (do_catalog)
 		catalog_count = cat_arg->count;
@@ -1470,7 +1471,7 @@ int stargen (actions		action,
 			fprintf (sgOut, "Total Max ipp: %5.0Lf\n", total);
 			fprintf (sgOut, "Max pressure: %5.0f atm\n", MAX_HABITABLE_PRESSURE);
 			
-			return (1);
+			return (0);
 		}
 		case aListCatalog:
 			if (sgOut == NULL)
@@ -1485,7 +1486,7 @@ int stargen (actions		action,
 						cat_arg->stars[index].luminosity);
 			}
 
-			return (1);
+			return (0);
 		
 		case aListCatalogAsHTML:
 			if (sgOut == NULL)
@@ -1498,7 +1499,7 @@ int stargen (actions		action,
 						cat_arg->stars[index].name);
 			}
 
-			return (1);
+			return (0);
 		
 		case aSizeCheck:
 		{
@@ -1518,7 +1519,7 @@ int stargen (actions		action,
 					 temp - FREEZING_POINT_OF_WATER,
 					 temp - EARTH_AVERAGE_KELVIN);
 
-			return (1);
+			return (0);
 		}
 		
 		case aListVerbosity:
@@ -1549,7 +1550,7 @@ int stargen (actions		action,
 					"\t10000\tList type diversity\n"
 					"\t20000\tTrace Surface temp interations\n"
 					);
-			return (1);
+			return (0);
 		case aGenerate:
 		
 			break;
@@ -1588,14 +1589,15 @@ int stargen (actions		action,
 	{
 		if (strlen(filename_arg) > 0)
 			snprintf(thumbnail_file, sizeof(thumbnail_file), "%s", filename_arg);
-		
+
 		thumbnails = open_html_file ("Thumbnails", flag_seed, path, url_path, thumbnail_file, ".html",
 									 prognam, sgOut);
 		if (thumbnails == NULL)
 		{
 			fprintf(sgErr, "Could not open file %s%s\n",
 					path, thumbnail_file);
-			exit(0);
+			status = 1;
+			goto cleanup;
 		}
 	}
 	
@@ -1676,7 +1678,8 @@ int stargen (actions		action,
 		{
 			fprintf(sgErr, "Could not open file %s%s\n",
 				path, csv_file_name);
-			exit(0);
+			status = 1;
+			goto cleanup;
 		}
 	
 		if (thumbnails != NULL)
@@ -1853,16 +1856,12 @@ int stargen (actions		action,
 		if (innermost_planet == NULL)
 		{
 			fprintf (sgErr, "Out of memory while generating a system.\n");
-			dust_density_coeff = saved_dust_coeff;
-			if ((thumbnails != NULL) && (thumbnails != sgOut))
-				close_html_file (thumbnails);
-			if ((csv_file != NULL) && (csv_file != sgOut))
-			{
-				fflush (csv_file);
-				fclose (csv_file);
-			}
+			free_atmosphere (innermost_planet);
+			free_planet (innermost_planet);
+			innermost_planet = NULL;
 			free_generations ();
-			return 1;
+			status = 1;
+			goto cleanup;
 		}
 
 		{
@@ -1999,13 +1998,24 @@ int stargen (actions		action,
 											url_path, system_url, svg_url, file_name,
 											TRUE, FALSE, TRUE, do_moons, graphic_format);
 							html_describe_system(innermost_planet, do_gases, url_path, html_file);
-							close_html_file(html_file);
+							
+							/* Only close streams we opened; a caller-supplied
+							 * stream (stdout) is finalized, never closed. */
+							if (html_file != sgOut)
+								close_html_file(html_file);
+							else
+								finalize_html_file(html_file);
 						}
 						else
 						{
 							fprintf(sgErr, "Could not open file %s%s%s\n",
 									path, file_name, ".html");
-							exit(0);
+							free_atmosphere (innermost_planet);
+							free_planet (innermost_planet);
+							innermost_planet = NULL;
+							free_generations ();
+							status = 1;
+							goto cleanup;
 						}
 					}
 				break;
@@ -2092,22 +2102,36 @@ int stargen (actions		action,
 				 max_moon_mass * SUN_MASS_IN_EARTH_MASSES);
 	}
 		
+cleanup:
+	/* Finalize and close only the streams the program opened. Streams
+	 * handed in by the caller (stdout) are flushed and finalized, never
+	 * closed. The historical version closed caller-owned stdout here in
+	 * the ffCSVdl and single-system ffHTML stdout modes. */
 	if (system_count > 1)
 	{
-		if (do_gases)
-			html_thumbnail_totals(thumbnails);
+		if (thumbnails != NULL)
+		{
+			if ((status == 0) && do_gases)
+				html_thumbnail_totals (thumbnails);
 
-		close_html_file(thumbnails);
+			if (thumbnails != sgOut)
+				close_html_file (thumbnails);
+			else
+				finalize_html_file (thumbnails);
+		}
 	}
+
 	if (csv_file != NULL)
 	{
 		fflush (csv_file);
-		fclose (csv_file);
+
+		if (csv_file != sgOut)
+			fclose (csv_file);
 	}
 
 	/* Undo the experimental dust-density ratio so process-global state
 	 * does not compound across stargen() calls (PLAN.MD §4). */
 	dust_density_coeff = saved_dust_coeff;
 
-	return(0);
+	return status;
 }

@@ -6,6 +6,7 @@ char *type_string(planet_type);
 void create_svg_file (FILE *, planet_pointer, char *, char *, char *, char *);
 FILE *open_csv_file (char *, char *);
 FILE *open_html_file(char *, long, char *, char *, char *, char *, char *, FILE *);
+void finalize_html_file(FILE *);		/* footer + flush; does NOT close */
 void close_html_file(FILE *);
 void print_description(FILE *, char *, planet_pointer, char *);
 void list_molecules(FILE *, long double);

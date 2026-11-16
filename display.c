@@ -807,7 +807,13 @@ FILE *open_html_file (char *system_name,
 	return file;
 }
 
-void close_html_file(FILE *file)
+/*
+ *	Write the HTML document footer and flush, without closing the stream.
+ *	Callers own the stream decision: close_html_file() uses this for
+ *	streams the program opened itself; streams handed in by the caller
+ *	(e.g. stdout) must only be finalized, never closed.
+ */
+void finalize_html_file(FILE *file)
 {
 	if (file == NULL)
 		return;
@@ -820,6 +826,14 @@ void close_html_file(FILE *file)
 			"<p>\n\n"
 	        "</body>\n</html>\n");
 	fflush (file);
+}
+
+void close_html_file(FILE *file)
+{
+	if (file == NULL)
+		return;
+
+	finalize_html_file (file);
 	fclose (file);
 }
 

@@ -156,6 +156,7 @@ int main (int argc, char *argv[])
 	char 		*c						= NULL;
 	int  		skip					= FALSE;
 	int  		index					= 0;
+	int			stargen_status			= 0;
 
 #ifdef macintosh
 	_ftype 		= 'TEXT';
@@ -434,7 +435,7 @@ int main (int argc, char *argv[])
 					 argv[index]);
 	}
 	
-	stargen (action,
+	stargen_status = stargen (action,
 			 flag_char,
 			 path,
 			 url_path_arg,
@@ -458,5 +459,8 @@ int main (int argc, char *argv[])
 			 graphic_format
 			 );
 
-	return(0);
+	/* Propagate the engine's status: 0 = success (including valid
+	 * "no matching system" runs), nonzero = failure. The historical
+	 * driver ignored this value entirely. */
+	return stargen_status;
 }
