@@ -1,6 +1,7 @@
 # Build trees
 build/
 out/
+dist/
 .vs/
 
 # Compiler / linker artifacts
