@@ -696,7 +696,30 @@ static void push_flag_arg(worker_args *wa, const sg_dom_value *args,
 typedef struct tool_ctx {
 	mcp_config	 cfg;
 	FILE		*err;
+	int			 modern;
 } tool_ctx;
+
+/* Tool EXECUTION failure (bad arguments, worker trouble): reported as a
+ * result with isError:true so models can self-correct (PLAN.MD §7; the
+ * MCP tools spec). Protocol-level errors (unknown tool, malformed
+ * request) remain JSON-RPC errors. */
+static void reply_tool_failure(FILE *out, const sg_dom_value *id, int modern,
+							   const char *text)
+{
+	sg_json_writer w;
+
+	reply_begin(&w, out, id, modern);
+
+	sg_json_array_begin(&w, "content");
+	sg_json_object_begin(&w, NULL);
+	sg_json_string(&w, "type", "text");
+	sg_json_string(&w, "text", text);
+	sg_json_object_end(&w);
+	sg_json_array_end(&w);
+
+	sg_json_bool(&w, "isError", 1);
+	reply_end(&w, out);
+}
 
 /* ------------------------------------------------------------------ */
 /* tools/list                                                           */
@@ -966,7 +989,7 @@ static int tool_generate_system(tool_ctx *tc, const sg_dom_value *args,
 
 	if (build_source_args(args, &wa, err, sizeof(err)) != 0)
 	{
-		send_error(out, id, -32602, err, NULL);
+		reply_tool_failure(out, id, tc->modern, err);
 		return 1;
 	}
 
@@ -1165,7 +1188,7 @@ static int tool_find_systems(tool_ctx *tc, const sg_dom_value *args,
 
 	if (build_source_args(args, &wa, err, sizeof(err)) != 0)
 	{
-		send_error(out, id, -32602, err, NULL);
+		reply_tool_failure(out, id, tc->modern, err);
 		return 1;
 	}
 
@@ -1616,6 +1639,7 @@ static void dispatch_message(dispatch_ctx *dc, sg_dom_value *msg)
 
 		tc.cfg = dc->cfg;
 		tc.err = dc->err;
+		tc.modern = dc_is_modern(version_result);
 
 		if (tool == NULL)
 		{
