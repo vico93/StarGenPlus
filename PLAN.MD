@@ -2,6 +2,40 @@
 
 Date: 2026-11-15
 
+> **ADDENDUM (2026-11-16, implementation delivered).** The plan was
+> executed through Phase E with one agreed deviation and the following
+> deltas:
+>
+> 1. **MCP architecture deviation (owner-approved):** §1/§7 recommended a
+>    Python SDK adapter; the owner explicitly requested a `--mcp` flag on
+>    the program itself. The delivered system is a **C-native dual-era
+>    MCP stdio server inside the same executable**, which spawns fresh
+>    `--json` worker processes per generation — preserving this plan's
+>    safety rules (fresh process per system, worker timeouts, crash
+>    isolation, bounded output). PLAN §7's limits (10 s worker / 30 s
+>    search / 1000 attempts / 10 results) are implemented with
+>    environment overrides. MCP revision support was updated to the
+>    current **2026-07-28** spec (per-request `_meta` versioning,
+>    mandatory `server/discover`, `-32022`) plus the legacy
+>    initialize-handshake era (≤ 2025-11-25), and was verified with the
+>    official Python SDK client (`tests/test_mcp_client.py`).
+> 2. **Phase completion:** A (CMake/MSVC 2026 x64 baseline + fixtures),
+>    B (B1 mechanical modernization warning-clean at /W4 /WX; B2 BUG-04
+>    Callisto fix + audit; B3 ownership/template/state; B4 exit codes +
+>    stream ownership; B5 /WX + ASan profile + repeat-call tests),
+>    C (C1 shared helpers; C2 CSV; C3 text; C4 HTML/SSC/SVG), D (headless
+>    `--json` + `--list-stars-json`, schema_version 1), E (MCP server,
+>    dual-era, three tools, worker manager, cancellation), F (docs:
+>    docs/BUILDING.md, docs/JSON-SCHEMA.md, docs/MCP-SERVER.md,
+>    docs/CSV-FORMAT.md) are all implemented and committed; see git log
+>    for the per-phase commits and evidence.
+> 3. **Documented legacy quirks preserved:** `-e ... --` remains a
+>    silent no-op (source-1.43 behavior, documented in
+>    docs/CSV-FORMAT.md); exit codes for success paths unchanged.
+> 4. **Not done (by scope agreement):** licensing investigation; no
+>    publishing/installing; no changes to the original
+>    `D:\Apps\WinStarGen` installation.
+
 ## 1. Owner's request and chosen approach
 
 Implement this work in the owner's NEW FORK DIRECTORY, not in the original

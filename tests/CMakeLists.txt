@@ -68,6 +68,7 @@ if(MSVC)
 		list(APPEND _msvc_test_path "${_d}")
 	endforeach()
 
-	set_tests_properties(buildinfo fixtures repeat_call numfmt escape PROPERTIES
+	set_tests_properties(buildinfo fixtures repeat_call numfmt escape
+						 json_roundtrip PROPERTIES
 						 ENVIRONMENT "PATH=${_msvc_test_path};$ENV{PATH}")
 endif()
