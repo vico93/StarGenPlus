@@ -807,9 +807,10 @@ FILE *open_html_file (char *system_name,
 	return file;
 }
 
-void close_html_file(file)
-FILE *file;
+void close_html_file(FILE *file)
 {
+	if (file == NULL)
+		return;
 
 	fprintf (file,
 			"<p>\n\n"

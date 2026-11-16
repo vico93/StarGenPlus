@@ -35,10 +35,6 @@
 #include	<float.h>
 #endif
 
-#ifdef WIN32
-#pragma warning (disable: 4048) // Hush compiler - don't complain about storing specific arrays in generic pointers
-#endif
-
 #include	"const.h"
 #include	"structs.h"
 #include	"stargen.h"
@@ -65,7 +61,7 @@ star	manticores[] =
  {1.0,		1.00,	1.047,	0.05,	79.2,	 NULL,		"Manticore B",	 1, "Manticore B"},
 };
 
-catalog	manticore_cat	= {sizeof(manticores) / sizeof (star),	"B", &manticores};
+catalog	manticore_cat	= {sizeof(manticores) / sizeof (star),	"B", manticores};
 
 star	helios[] = 
 // L		Mass	Mass2	Eccen.	SMAxis	 Planets	Designation		Name
@@ -74,7 +70,7 @@ star	helios[] =
  {0.83,		0.87,	1.0,	0.45,	8.85,	 NULL,		"Helio B",	 1, "Helio B"},
 };
 
-catalog	helio		= {sizeof(helios) / sizeof (star), "?",	&helios};
+catalog	helio		= {sizeof(helios) / sizeof (star), "?",	helios};
 
 			     /*	No Orbit Eccen. Tilt   Mass    Gas Giant? Dust Mass   Gas */
 planets ilaqrb={1, 0.21, 0.1,   0,     EM(600.),TRUE,     0,   EM(600.), ZEROES,0,NULL, NULL};
@@ -87,7 +83,7 @@ star	ilAqrs[] =
 {0.0016,	0.32,	0,		0,		0,		 &ilaqrd,	"IL Aqr",	1, "IL Aquarii/Gliese 876"}	// 15.2
 };
 
-catalog	ilAqr_cat		= {sizeof(ilAqrs) / sizeof (star),	"G", &ilAqrs};
+catalog	ilAqr_cat		= {sizeof(ilAqrs) / sizeof (star),	"G", ilAqrs};
 void usage(char*);
 
 void usage(char *prognam)
@@ -193,11 +189,16 @@ int main (int argc, char *argv[])
 				break;
 			case 'm':	// set mass of star
 			{
-				double	m;	// gnu C doesn't like to scanf long doubles
-				
-				sscanf (++c, "%lf", &m);
+				double	m	= 0.0;	// gnu C doesn't like to scanf long doubles
+
+				if (sscanf (++c, "%lf", &m) != 1)
+				{
+					fprintf (stderr, "Invalid stellar mass: '%s'\n", c);
+					usage(prognam);
+					return (1);
+				}
 				mass_arg = m;
-				
+
 				skip = TRUE;
 				break;
 			}
@@ -289,9 +290,9 @@ int main (int argc, char *argv[])
 						--argc;
 						c = (++argv)[0];
 					}
-				
+
 				if (*c != '\0')
-					strcpy(filename_arg, c);
+					snprintf(filename_arg, sizeof(filename_arg), "%s", c);
 
 				skip = TRUE;
 				break;
@@ -324,13 +325,13 @@ int main (int argc, char *argv[])
 						--argc;
 						c = (++argv)[0];
 					}
-				
+
 				if (*c != '\0')
-					strcpy(path, c);
-				
+					snprintf(path, sizeof(path), "%s", c);
+
 				if (strcmp(path + strlen(path) - strlen(DIRSEP), DIRSEP) != 0)
-					strncat (path, DIRSEP, 80-strlen(path));
-					
+					snprintf(path + strlen(path), sizeof(path) - strlen(path), "%s", DIRSEP);
+
 				skip = TRUE;
 				break;
 			case 'u':
@@ -340,13 +341,15 @@ int main (int argc, char *argv[])
 						--argc;
 						c = (++argv)[0];
 					}
-				
+
 				if (*c != '\0')
-					strcpy(url_path_arg, c);
-				
-				if (strcmp(url_path_arg + strlen(url_path_arg) - strlen("/"), "/") != 0)
-					strncat (url_path_arg, "/", 80-strlen(url_path_arg));
-				
+					snprintf(url_path_arg, sizeof(url_path_arg), "%s", c);
+
+				if (url_path_arg[0] != '\0'
+				 && strcmp(url_path_arg + strlen(url_path_arg) - 1, "/") != 0)
+					snprintf(url_path_arg + strlen(url_path_arg),
+							 sizeof(url_path_arg) - strlen(url_path_arg), "%s", "/");
+
 				skip = TRUE;
 				break;
 			case 'g':
@@ -355,7 +358,11 @@ int main (int argc, char *argv[])
 			case 'v':	// verbosity
 				if (isdigit(*(c+1)))
 				{
-					sscanf (++c, "%x", &flag_verbose);
+					unsigned	verbosity	= 0;
+
+					if (sscanf (++c, "%x", &verbosity) == 1)
+						flag_verbose = (int)verbosity;
+
 					skip = TRUE;
 					if (flag_verbose & 0x0001)
 						flags_arg |= fDoGases;
@@ -392,11 +399,17 @@ int main (int argc, char *argv[])
 				break;
 			case 'A':
 			{
-				double ratio;
-				
-				sscanf (++c, "%lf", &ratio);
+				double	ratio	= 0.0;
+
+				if (sscanf (++c, "%lf", &ratio) != 1)
+				{
+					fprintf (stderr, "Invalid dust density ratio: '%s'\n", c);
+					usage(prognam);
+					return (1);
+				}
+
 				skip = TRUE;
-				
+
 				if (ratio > 0.0)
 					ratio_arg = ratio;
 				break;
@@ -412,13 +425,13 @@ int main (int argc, char *argv[])
 	}
 	
 	for (index = 0; index < argc; index++) {
-		if ((strlen(argv[index]) + strlen(arg_name)) < sizeof(arg_name))
-		{
-			if (strlen(arg_name))
-				strcpy(arg_name+strlen(arg_name), " ");
-			
-			strcpy(arg_name+strlen(arg_name), argv[index]);
-		}
+		size_t	used	= strlen(arg_name);
+
+		if (used + 1 < sizeof(arg_name))
+			snprintf(arg_name + used, sizeof(arg_name) - used,
+					 "%s%s",
+					 (used > 0) ? " " : "",
+					 argv[index]);
 	}
 	
 	stargen (action,

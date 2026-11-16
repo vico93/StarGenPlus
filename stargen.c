@@ -34,10 +34,6 @@
 #include	<float.h>
 #endif
 
-#ifdef WIN32
-#pragma warning (disable: 4048) // Hush compiler - don't complain about storing specific arrays in generic pointers
-#endif
-
 #include	"const.h"
 #include	"structs.h"
 #include 	"accrete.h"
@@ -278,9 +274,9 @@ star	various[] =
  {14800.,		8,				0,				0,		0,		 NULL,		"ALF Car",	 1, "Canopus"}
 };
 
-catalog	solstation	= {sizeof(web) / sizeof (star),		"w", 	&web};
-catalog	dole		= {sizeof(perdole) / sizeof (star), "d",	&perdole};
-catalog jimb	    = {sizeof(various) / sizeof (star), "F",	&various};
+catalog	solstation	= {sizeof(web) / sizeof (star),		"w", 	web};
+catalog	dole		= {sizeof(perdole) / sizeof (star), "d",	perdole};
+catalog jimb	    = {sizeof(various) / sizeof (star), "F",	various};
 
 ChemTable    gases[] =
 {
@@ -329,7 +325,7 @@ void usage(char *);
 static int diminishing_abundance(const void *xp, const void *yp);
 static int diminishing_pressure(const void *xp, const void *yp);
 
-void init()
+void init(void)
 {
 	if (!flag_seed)
 	{
@@ -830,7 +826,7 @@ void generate_planet(planet_pointer	planet,
 						
 						n++;
 						
-						sprintf(moon_id,
+						snprintf(moon_id, sizeof(moon_id),
 								"%s.%d",
 								planet_id, n);
 						
@@ -1153,7 +1149,7 @@ void generate_planets(sun*			sun,
 	{
 		char	planet_id[80];
 		
-		sprintf(planet_id,
+		snprintf(planet_id, sizeof(planet_id),
 				"%s (-s%ld -%c%d) %d",
 				system_name, flag_seed, flag_char, sys_no, planet_no);
 				
@@ -1175,7 +1171,7 @@ void generate_planets(sun*			sun,
 		{
 			char	moon_id[80];
 			
-			sprintf(moon_id,
+			snprintf(moon_id, sizeof(moon_id),
 					"%s.%d",
 					planet_id, moons);
 			check_planet(moon, moon_id, TRUE);
@@ -1362,9 +1358,9 @@ int stargen (actions		action,
 			{
 				fprintf (sgOut, "%3d: %-30.30s M: %4.2LG L: %4.2LG\n",
 						index,
-						(*(cat_arg->stars))[index].name,
-						(*(cat_arg->stars))[index].mass,
-						(*(cat_arg->stars))[index].luminosity);
+						cat_arg->stars[index].name,
+						cat_arg->stars[index].mass,
+						cat_arg->stars[index].luminosity);
 			}
 
 			return (1);
@@ -1377,7 +1373,7 @@ int stargen (actions		action,
 			{
 				fprintf (sgOut, "\t<option value=%d>%s</option>\n",
 						index,
-						(*(cat_arg->stars))[index].name);
+						cat_arg->stars[index].name);
 			}
 
 			return (1);
@@ -1389,11 +1385,11 @@ int stargen (actions		action,
 			if (sgOut == NULL)
 				sgOut = stdout;
 			
-			fprintf (sgOut, "Size of float: %ld\n",
+			fprintf (sgOut, "Size of float: %zu\n",
 					 sizeof(float));
-			fprintf (sgOut, "Size of doubles: %ld\n",
+			fprintf (sgOut, "Size of doubles: %zu\n",
 					 sizeof(double));
-			fprintf (sgOut, "Size of long doubles: %ld\n\n",
+			fprintf (sgOut, "Size of long doubles: %zu\n\n",
 					 sizeof(long double));
 			fprintf (sgOut, "Earth Eff Temp: %5.1Lf K, %5.1Lf C, Earth rel: %5.1Lf C\n\n",
 					 temp,
@@ -1469,7 +1465,7 @@ int stargen (actions		action,
 	 && !(out_format == ffCSVdl))
 	{
 		if (strlen(filename_arg) > 0)
-			strcpy(thumbnail_file, filename_arg);
+			snprintf(thumbnail_file, sizeof(thumbnail_file), "%s", filename_arg);
 		
 		thumbnails = open_html_file ("Thumbnails", flag_seed, path, url_path, thumbnail_file, ".html",
 									 prognam, sgOut);
@@ -1488,14 +1484,14 @@ int stargen (actions		action,
 		if ((sgOut != NULL))
 		{
 			char sys_no[10] = "x";
-			
+
 			if (!do_catalog)
-				sprintf(&sys_no[0], "%d", sys_no_arg-1);
-			
+				snprintf(&sys_no[0], sizeof(sys_no), "%d", sys_no_arg-1);
+
 			if (out_format == ffCSVdl)
 				csv_file = sgOut;
 
-			sprintf (&csv_url[0],
+			snprintf (&csv_url[0], sizeof(csv_url),
 					 "/cgi-bin/StarGen.pl?Catalog=%s&Dole=%s&SolStation=%s&Mass=%LG&Output=%s&Seed=%ld&Count=%d&Incr=%d&Gas=%s&Moon=%s&SVG=%s&DoIt=CSV",
 					 (cat_arg == NULL) ? "none" : cat_arg->arg,
 					 sys_no,
@@ -1516,35 +1512,35 @@ int stargen (actions		action,
 		else
 		{
 			char cleaned_arg[300] = "StarGen";
-			
+
 			if (strlen(filename_arg) > 0)
 			{
 				char *ptr;
-				
-				strcpy (cleaned_arg, filename_arg);
-				
+
+				snprintf (cleaned_arg, sizeof(cleaned_arg), "%s", filename_arg);
+
 				ptr = strrchr(cleaned_arg, '.');
-				
+
 				if ((ptr != NULL)
 				 && (strcmp(ptr, ".html") == 0))
 					*ptr = '\0';
 			}
-			
+
 			if (thumbnails != NULL)
 			{
-				sprintf (&csv_file_name[0], 
-						 "%s-%ld.csv", 
+				snprintf (&csv_file_name[0], sizeof(csv_file_name),
+						 "%s-%ld.csv",
 						 cleaned_arg,
 						 flag_seed);
 			}
 			else
 			{
-				sprintf (&csv_file_name[0], 
-						 "%s.csv", 
+				snprintf (&csv_file_name[0], sizeof(csv_file_name),
+						 "%s.csv",
 						 cleaned_arg);
 			}
 
-			sprintf (&csv_url[0],
+			snprintf (&csv_url[0], sizeof(csv_url),
 					 "%s%s%s",
 					 url_path,
 					 subdir,
@@ -1591,12 +1587,12 @@ int stargen (actions		action,
 					sys_no = index;
 			}
 
-			if ((*(cat_arg->stars))[sys_no].known_planets != NULL)
+			if (cat_arg->stars[sys_no].known_planets != NULL)
 				has_known_planets = TRUE;
 
 			if (use_known_planets || no_generate)  
 			{
-				seed_planets = (*(cat_arg->stars))[sys_no].known_planets;
+				seed_planets = cat_arg->stars[sys_no].known_planets;
 				
 				use_seed_system	= no_generate;
 			}
@@ -1605,26 +1601,26 @@ int stargen (actions		action,
 				seed_planets = NULL;
 			}
 			
-			in_celestia = (*(cat_arg->stars))[sys_no].in_celestia;
+			in_celestia = cat_arg->stars[sys_no].in_celestia;
 			
-			sun.mass = (*(cat_arg->stars))[sys_no].mass;
-			sun.luminosity = (*(cat_arg->stars))[sys_no].luminosity;
+			sun.mass = cat_arg->stars[sys_no].mass;
+			sun.luminosity = cat_arg->stars[sys_no].luminosity;
 
 			if (do_catalog || sys_name_arg[0] == '\0')
 			{
-				sprintf (&system_name[0], "%s", (*(cat_arg->stars))[sys_no].name);
-				sprintf (&designation[0], "%s", (*(cat_arg->stars))[sys_no].desig);
-				
+				snprintf (&system_name[0], sizeof(system_name), "%s", cat_arg->stars[sys_no].name);
+				snprintf (&designation[0], sizeof(designation), "%s", cat_arg->stars[sys_no].desig);
+
 			}
 			else
 			{
-				sprintf (&system_name[0], "%s", sys_name_arg);
-				sprintf (&designation[0], "%s", sys_name_arg);
+				snprintf (&system_name[0], sizeof(system_name), "%s", sys_name_arg);
+				snprintf (&designation[0], sizeof(designation), "%s", sys_name_arg);
 			}
+
+			snprintf (&file_name[0], sizeof(file_name), "%s-%ld", designation, flag_seed);
 			
-			sprintf (&file_name[0], "%s-%ld", designation, flag_seed);
-			
-			if ((*(cat_arg->stars))[sys_no].m2 > .001)
+			if (cat_arg->stars[sys_no].m2 > .001)
 			{
 				/*
 				 *	The following is Holman & Wiegert's equation 1 from
@@ -1632,10 +1628,10 @@ int stargen (actions		action,
 				 *	The Astronomical Journal, 117:621-628, Jan 1999
 				 */
 				long double m1 = sun.mass;
-				long double m2 = (*(cat_arg->stars))[sys_no].m2;
+				long double m2 = cat_arg->stars[sys_no].m2;
 				long double mu = m2 / (m1 + m2);
-				long double e = (*(cat_arg->stars))[sys_no].e;
-				long double a = (*(cat_arg->stars))[sys_no].a;
+				long double e = cat_arg->stars[sys_no].e;
+				long double a = cat_arg->stars[sys_no].a;
 				
 				outer_limit = (0.464 + (-0.380 * mu) + (-0.631 * e) +
 							   (0.586 * mu * e) + (0.150 * pow2(e)) +
@@ -1646,9 +1642,9 @@ int stargen (actions		action,
 		}
 		else if (reuse_solar_system)
 		{
-			sprintf (&system_name[0], "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
-			sprintf (&designation[0], "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
-			sprintf (&file_name[0], "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&system_name[0], sizeof(system_name), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&designation[0], sizeof(designation), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
+			snprintf (&file_name[0], sizeof(file_name), "Earth-M%LG", earth.mass * SUN_MASS_IN_EARTH_MASSES);
 
 			outer_limit = 0.0;
 		}
@@ -1656,16 +1652,16 @@ int stargen (actions		action,
 		{
 			if (sys_name_arg[0])
 			{
-				sprintf (&system_name[0], "%s", sys_name_arg);
-				sprintf (&designation[0], "%s", sys_name_arg);
+				snprintf (&system_name[0], sizeof(system_name), "%s", sys_name_arg);
+				snprintf (&designation[0], sizeof(designation), "%s", sys_name_arg);
 			}
 			else
 			{
-				sprintf (&system_name[0], "%s %ld-%LG", prognam, flag_seed, sun.mass);
-				sprintf (&designation[0], "%s", prognam);
+				snprintf (&system_name[0], sizeof(system_name), "%s %ld-%LG", prognam, flag_seed, sun.mass);
+				snprintf (&designation[0], sizeof(designation), "%s", prognam);
 			}
-			
-			sprintf (&file_name[0], "%s-%ld-%LG", designation, flag_seed, sun.mass);
+
+			snprintf (&file_name[0], sizeof(file_name), "%s-%ld-%LG", designation, flag_seed, sun.mass);
 			outer_limit = 0;
 		}
 		
@@ -1787,14 +1783,14 @@ int stargen (actions		action,
 			
 			if (sgOut == NULL)
 			{
-				sprintf (system_url,
+				snprintf (system_url, sizeof(system_url),
 						 "%s%s%s%s",
 						 url_path,
 						 subdir,
 						 file_name,
 						 ".html");
 
-				sprintf (svg_url,
+				snprintf (svg_url, sizeof(svg_url),
 						 "%s%s%s%s",
 						 url_path,
 						 subdir,
@@ -1804,7 +1800,7 @@ int stargen (actions		action,
 			else
 			{
 
-				sprintf (system_url,
+				snprintf (system_url, sizeof(system_url),
 						 "/cgi-bin/StarGen.pl?Catalog=%s&Dole=%d&SolStation=%d&Mass=%LG&Output=all&Seed=%ld&Count=1&Incr=1&Gas=%s&Moon=%s&SVG=%s",
 						 (cat_arg == NULL) ? "none" : cat_arg->arg,
 						 sys_no,
@@ -1816,7 +1812,7 @@ int stargen (actions		action,
 						 (graphic_format == gfSVG)	? "on" : "off"	// one of ("on", "off")
 						);
 
-				sprintf (svg_url,
+				snprintf (svg_url, sizeof(svg_url),
 						 "/cgi-bin/StarGen.pl?Catalog=%s&Dole=%d&SolStation=%d&Mass=%LG&Output=all&Seed=%ld&Count=1&Incr=1&Gas=%s&Moon=%s&SVG=%s&DoIt=SVG",
 						 (cat_arg == NULL) ? "none" : cat_arg->arg,
 						 sys_no,

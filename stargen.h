@@ -2,6 +2,16 @@
  *	StarGen main API
  */
 
+#pragma once
+
+#include <stdio.h>
+
+#include "structs.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef	enum actions {						// Callable StarGen can:
 	aGenerate,								//	- Generate randon system(s)
 	aListGases,								//	- List the gas table
@@ -53,17 +63,27 @@ int stargen (actions		action,			// One of the above
 #define fOnlyJovianHabitable	0x0400
 #define fOnlyEarthlike			0x0800
 
-										// Values of out_format
-#define	ffHTML				'HTML'
-#define	ffTEXT				'TEXT'
-#define	ffCELESTIA			'.SSC'
-#define ffCSV				'.CSV'
-#define ffCSVdl				'+CSV'
-#define ffSVG				'.SVG'
+										// Values of out_format.
+										// The historical source used
+										// implementation-defined
+										// multi-character character
+										// constants ('HTML', '.SSC', ...);
+										// these are internal selectors
+										// only and are never serialized.
+enum {
+	ffHTML				= 1,
+	ffTEXT				= 2,
+	ffCELESTIA			= 3,
+	ffCSV				= 4,
+	ffCSVdl				= 5,
+	ffSVG				= 6,
+};
 
 										// Values of graphic_format
-#define	gfGIF				'.GIF'
-#define gfSVG				'.SVG'
+enum {
+	gfGIF				= 1,
+	gfSVG				= 2,
+};
 
 										// The two predefined star catalogs.
 extern catalog	solstation;
@@ -72,6 +92,7 @@ extern catalog  jimb;
 										// You can roll your own (see main.c)
 
 extern planets mercury;					// For building private catalogs
+extern planet_pointer solar_system;		// Head of the Solar System fixture chain
 
 
 extern int          flag_verbose;		// Likely to move into stargen() args.
@@ -115,3 +136,7 @@ extern int max_gas;
 #endif
 
 extern char *	stargen_revision;		// RCS revision of stargen.c
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
